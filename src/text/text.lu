@@ -593,6 +593,104 @@ pub fn report(mut t: Text, o: opts.Opts, dirs: int, files: int, size: int) {
     }
 }
 
+/// `--asp-diff`'s first line, `A -> B` (`src/diff.c:363`).
+pub fn diff_head(mut t: Text, a: str, b: str) {
+    out.s(mut t.o, a)
+    out.s(mut t.o, " -> ")
+    out.s(mut t.o, b)
+    out.c(mut t.o, 10)
+}
+
+/// One `--asp-diff` line (`src/diff.c:302`): the indentation (always with
+/// its spaces), the marker (`[+] `, `[-] `, `[~] `, coloured when colour
+/// is on; four spaces for an unchanged directory that holds a change),
+/// the name in its colour, a link's target.
+pub fn diff_line(
+    mut t: Text,
+    o: opts.Opts,
+    status: int,
+    a: ent.Arena,
+    e: ent.Ent,
+    depth: int,
+    is_last: bool,
+) {
+    var i = 1
+    while i < depth {
+        let last = i < t.last.len && t.last[i]
+        if last {
+            out.bytes(mut t.o, t.space, 0, t.space.len)
+        } else {
+            out.bytes(mut t.o, t.vert, 0, t.vert.len)
+        }
+        out.c(mut t.o, 32)
+        i += 1
+    }
+    if depth > 0 {
+        if is_last {
+            out.bytes(mut t.o, t.corner, 0, t.corner.len)
+        } else {
+            out.bytes(mut t.o, t.vleft, 0, t.vleft.len)
+        }
+        out.c(mut t.o, 32)
+    }
+    while t.last.len <= depth {
+        (mut t.last).push(false)
+    }
+    t.last[depth] = is_last
+    let colour = t.colors.enabled
+    // the marker and its colour; an unchanged directory that holds a
+    // change gets four spaces
+    let code = if status == 0 {
+        "\u{1b}[32m"
+    } else if status == 1 {
+        "\u{1b}[31m"
+    } else {
+        "\u{1b}[33m"
+    }
+    let mark = if status == 0 then "[+] " else if status == 1 then "[-] " else "[~] "
+    if status == 3 {
+        out.s(mut t.o, "    ")
+    } else {
+        if colour {
+            out.s(mut t.o, code)
+        }
+        out.s(mut t.o, mark)
+        if colour {
+            out.s(mut t.o, "\u{1b}[0m")
+        }
+    }
+    var colored = false
+    if colour && e.has_st {
+        colored = color.apply(
+            t.colors,
+            mut t.o,
+            e.st.kind,
+            e.st.mode,
+            e.nm,
+            1,
+            e.nm.len,
+            e.flags & ent.f_orphan() != 0,
+            false,
+        )
+    }
+    name.put_flags(mut t.o, e.nm, 1, e.nm.len, t.utf8, t.np)
+    if colored {
+        color.end(t.colors, mut t.o)
+    }
+    if e.lnk >= 0 {
+        out.s(mut t.o, " -> ")
+        name.put_flags(mut t.o, a.lnks[e.lnk], 0, a.lnks[e.lnk].len, t.utf8, t.np)
+    }
+    out.c(mut t.o, 10)
+    out.maybe(mut t.o)
+    let _ = o.noreport
+}
+
+/// `--asp-diff`'s count (`src/diff.c:369`).
+pub fn diff_report(mut t: Text, added: int, removed: int, modified: int) {
+    out.s(mut t.o, "\n{added} added, {removed} removed, {modified} modified\n")
+}
+
 /// Flush what is buffered.
 pub fn finish(mut t: Text) {
     out.flush(mut t.o)

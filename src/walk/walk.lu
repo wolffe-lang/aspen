@@ -1838,3 +1838,251 @@ pub fn run(mut w: Walk, o: opts.Opts, roots: List[str]) -> int {
     }
     if w.errors > 0 then 2 else 0
 }
+
+// ---- --asp-diff (C aspen's own extension, `src/diff.c`) ----
+
+/// One merged entry: added (0), removed (1), modified (2) or unchanged
+/// (3); the entry on each side (arena index, -1 none), its children.
+struct Dent {
+    status: int,
+    a: int,
+    b: int,
+    kids: List[int],
+}
+
+fn d_added() -> int {
+    0
+}
+
+fn d_removed() -> int {
+    1
+}
+
+fn d_modified() -> int {
+    2
+}
+
+fn d_unchanged() -> int {
+    3
+}
+
+/// Whether two entries of one name differ (`entries_differ`,
+/// `src/diff.c:69`): the type, the size, the time, the mode, the target.
+fn entries_differ(aa: ent.Arena, ea: ent.Ent, ab: ent.Arena, eb: ent.Ent) -> bool {
+    if ea.kind != eb.kind {
+        return true
+    }
+    if ea.has_st && eb.has_st {
+        if ea.st.size != eb.st.size || ea.st.mtime != eb.st.mtime || ea.st.mode != eb.st.mode {
+            return true
+        }
+    } else if ea.has_st != eb.has_st {
+        return true
+    }
+    if ea.lnk >= 0 && eb.lnk >= 0 {
+        return namecmp(row_of(aa.lnks[ea.lnk]), row_of(ab.lnks[eb.lnk])) != 0
+    }
+    (ea.lnk >= 0) != (eb.lnk >= 0)
+}
+
+/// A whole subtree marked one way (`annotate_subtree`, `src/diff.c:192`).
+fn annotate(mut ds: List[Dent], ar: ent.Arena, arr: List[int], status: int) -> List[int] {
+    var out = List[int]()
+    for k in arr {
+        let c = ar.ents[k].child
+        var kids = List[int]()
+        if c >= 0 {
+            kids = annotate(mut ds, ar, ar.kids[c], status)
+        }
+        let a = if status == d_removed() then k else -1
+        let b = if status == d_added() then k else -1
+        (mut ds).push(Dent { status: status, a: a, b: b, kids: kids })
+        (mut out).push(ds.len - 1)
+    }
+    out
+}
+
+fn kids_of(ar: ent.Arena, k: int) -> List[int] {
+    let c = ar.ents[k].child
+    if c < 0 then List[int]() else copy ar.kids[c]
+}
+
+/// Two levels, both in name order, merged (`merge_level`, `src/diff.c:129`;
+/// names compared by byte, as aspen sorts them).
+fn merge(
+    mut ds: List[Dent],
+    aa: ent.Arena,
+    xs: List[int],
+    ab: ent.Arena,
+    ys: List[int],
+) -> List[int] {
+    var out = List[int]()
+    var i = 0
+    var j = 0
+    while i < xs.len && j < ys.len {
+        let ea = copy aa.ents[xs[i]]
+        let eb = copy ab.ents[ys[j]]
+        let c = namecmp(ea.nm, eb.nm)
+        if c < 0 {
+            let kids = annotate(mut ds, aa, kids_of(aa, xs[i]), d_removed())
+            (mut ds).push(Dent { status: d_removed(), a: xs[i], b: -1, kids: kids })
+            (mut out).push(ds.len - 1)
+            i += 1
+        } else if c > 0 {
+            let kids = annotate(mut ds, ab, kids_of(ab, ys[j]), d_added())
+            (mut ds).push(Dent { status: d_added(), a: -1, b: ys[j], kids: kids })
+            (mut out).push(ds.len - 1)
+            j += 1
+        } else {
+            let adir = ent.dir_like(ea)
+            let bdir = ent.dir_like(eb)
+            var st = d_unchanged()
+            var kids = List[int]()
+            if adir && bdir {
+                kids = merge(mut ds, aa, kids_of(aa, xs[i]), ab, kids_of(ab, ys[j]))
+                if entries_differ(aa, ea, ab, eb) {
+                    st = d_modified()
+                }
+            } else if adir != bdir {
+                st = d_modified()
+                if bdir && eb.child >= 0 {
+                    kids = annotate(mut ds, ab, kids_of(ab, ys[j]), d_added())
+                } else if adir && ea.child >= 0 {
+                    kids = annotate(mut ds, aa, kids_of(aa, xs[i]), d_removed())
+                }
+            } else if entries_differ(aa, ea, ab, eb) {
+                st = d_modified()
+            }
+            (mut ds).push(Dent { status: st, a: xs[i], b: ys[j], kids: kids })
+            (mut out).push(ds.len - 1)
+            i += 1
+            j += 1
+        }
+    }
+    while i < xs.len {
+        let kids = annotate(mut ds, aa, kids_of(aa, xs[i]), d_removed())
+        (mut ds).push(Dent { status: d_removed(), a: xs[i], b: -1, kids: kids })
+        (mut out).push(ds.len - 1)
+        i += 1
+    }
+    while j < ys.len {
+        let kids = annotate(mut ds, ab, kids_of(ab, ys[j]), d_added())
+        (mut ds).push(Dent { status: d_added(), a: -1, b: ys[j], kids: kids })
+        (mut out).push(ds.len - 1)
+        j += 1
+    }
+    out
+}
+
+fn has_changes(ds: List[Dent], arr: List[int]) -> bool {
+    for k in arr {
+        if ds[k].status != d_unchanged() || has_changes(ds, ds[k].kids) {
+            return true
+        }
+    }
+    false
+}
+
+fn shows(ds: List[Dent], k: int) -> bool {
+    ds[k].status != d_unchanged() || has_changes(ds, ds[k].kids)
+}
+
+/// The counts the report prints.
+struct Dtot {
+    added: int,
+    removed: int,
+    modified: int,
+}
+
+/// One merged level (`diff_emit_level`, `src/diff.c:302`): only what
+/// changed or holds a change, each with its marker.
+fn diff_level(
+    mut w: Walk,
+    o: opts.Opts,
+    ds: List[Dent],
+    aa: ent.Arena,
+    ab: ent.Arena,
+    arr: List[int],
+    depth: int,
+    mut tot: Dtot,
+) {
+    var vis = 0
+    for k in arr {
+        if shows(ds, k) {
+            vis += 1
+        }
+    }
+    var vi = 0
+    text.begin_level(mut w.t, o, depth)
+    for k in arr {
+        if !shows(ds, k) {
+            continue
+        }
+        vi += 1
+        let s = ds[k].status
+        if ds[k].b >= 0 {
+            text.diff_line(mut w.t, o, s, ab, copy ab.ents[ds[k].b], depth, vi == vis)
+        } else {
+            text.diff_line(mut w.t, o, s, aa, copy aa.ents[ds[k].a], depth, vi == vis)
+        }
+        if s == d_added() {
+            tot.added += 1
+        } else if s == d_removed() {
+            tot.removed += 1
+        } else if s == d_modified() {
+            tot.modified += 1
+        }
+        diff_level(mut w, o, ds, aa, ab, ds[k].kids, depth + 1, mut tot)
+    }
+}
+
+/// `--asp-diff A B` (`asp_diff_run`, `src/diff.c:340`): both trees built
+/// with every entry stat'ed and in name order, merged, the changes shown
+/// under `A -> B`, and a count of each kind. 2 when a root cannot be
+/// opened.
+pub fn diff(mut w: Walk, o0: opts.Opts, ra: str, rb: str) -> int {
+    var o = copy o0
+    o.sizeflag = true
+    o.sort = opts.sort_name()
+    o.reverse = false
+    o.dirsfirst = false
+    o.filesfirst = false
+    var fail = false
+    var opened_a = true
+    let rows_a = fs_read_dir_entries(ra) else |_| {
+        opened_a = false
+        List[List[byte]]()
+    }
+    if !opened_a {
+        eprint_raw("aspen: cannot open '{ra}'\n")
+        fail = true
+    }
+    var opened_b = true
+    let rows_b = fs_read_dir_entries(rb) else |_| {
+        opened_b = false
+        List[List[byte]]()
+    }
+    if !opened_b {
+        eprint_raw("aspen: cannot open '{rb}'\n")
+        fail = true
+    }
+    if fail {
+        return 2
+    }
+    reset_root(mut w)
+    let ta = build_level(mut w, o, strip_slashes(ra), take rows_a, 1, false)
+    let aa = copy w.a
+    reset_root(mut w)
+    let tb = build_level(mut w, o, strip_slashes(rb), take rows_b, 1, false)
+    let ab = copy w.a
+    var ds = List[Dent]()
+    let top = merge(mut ds, aa, ta.arr, ab, tb.arr)
+    text.diff_head(mut w.t, ra, rb)
+    var tot = Dtot { added: 0, removed: 0, modified: 0 }
+    diff_level(mut w, o, ds, aa, ab, top, 1, mut tot)
+    if !o.noreport {
+        text.diff_report(mut w.t, tot.added, tot.removed, tot.modified)
+    }
+    text.finish(mut w.t)
+    0
+}
