@@ -9,10 +9,16 @@
 # stdout, stderr and exit status are compared (and -o FILE's file). The
 # only normalisations are C aspen's sanctioned ones (its tests/golden/
 # usage.sh and run.sh): the program name at the start of a diagnostic line
-# and of the usage synopsis; DEVIATION D2's empty `"contents":[ ]`, which
-# tree leaks after an error and aspen omits; and DEVIATION D1's status:
-# under --du, --prune or --matchdirs tree exits 0 after an open error where
-# aspen, consistently, exits 2.
+# and of the usage synopsis; -H's program identity (the Author and
+# GENERATOR meta lines and the VERSION paragraph's text: A7, aspen's own
+# footer, which deviations.sh asserts); DEVIATION D3's percent-encoded
+# byte (tree's sign-extended `%FFFFFFC3` is aspen's `%C3`); DEVIATION
+# D4's link numbers (under -J/-X a link's --inodes/--device are its own
+# in aspen, its target's in tree, 0 for a dangling one); DEVIATION D2's
+# empty `"contents":[ ]`, which tree leaks after an error and aspen omits;
+# and DEVIATION D1's status:
+# under --du, --prune, --matchdirs, --filelimit or --condense tree exits 0
+# after an open or filelimit error where aspen, consistently, exits 2.
 #
 # A v1 set must agree. A v2 set is "not yet": aspen must refuse it by name
 # with status 2, and tree's answer is printed (status, stdout bytes and
@@ -60,7 +66,19 @@ sh "$ASPEN_ROOT/tests/fixtures/mkfixtures" "$fx" >/dev/null || { echo "oracle: t
 roots="main wide deny empty afile lnkroot extra /no/such/root"
 
 normerr() { sed 's/^tree: /PROG: /; s/^aspen: /PROG: /; s/^usage: tree /usage: PROG /; s/^usage: aspen /usage: PROG /'; }
-normout() { sed 's/^usage: tree /usage: PROG /; s/^usage: aspen /usage: PROG /; s/,"contents":\[ *\]//g'; }
+normout() {
+    sed 's/^usage: tree /usage: PROG /; s/^usage: aspen /usage: PROG /; s/,"contents":\[ *\]//g
+        s/%FFFFFF\([0-9A-Fa-f][0-9A-Fa-f]\)/%\1/g
+        /<link /s/ inode="[0-9]*"/ inode="N"/; /<link /s/ dev="[0-9]*"/ dev="N"/
+        /"type":"link"/s/,"inode":[0-9]*/,"inode":N/; /"type":"link"/s/,"dev":[0-9]*/,"dev":N/
+        s/^ <meta name="Author" content="Made by .[a-z]*.">$/ <meta name="Author" content="Made by PROG">/
+        s/^ <meta name="GENERATOR" content="[^"]*">$/ <meta name="GENERATOR" content="PROG">/
+        /^\t<p class="VERSION">$/,/^\t<\/p>$/{
+            /^\t<p class="VERSION">$/b
+            /^\t<\/p>$/b
+            d
+        }'
+}
 
 agree=0
 differ=0
@@ -106,7 +124,7 @@ show() { # a differing case
 }
 
 tab=$(printf '\t')
-while IFS="$tab" read -r id cls args; do
+while IFS="$tab" read -r id cls args rts; do
     case "$id" in '' | '#'*) continue ;; esac
     if [ -n "$only" ]; then
         case " $args " in *"$only"*) ;; *) continue ;; esac
@@ -115,6 +133,8 @@ while IFS="$tab" read -r id cls args; do
     case "$id" in help | bad-long | bad-short | missing-pattern | level-missing) rlist="-" ;; *) rlist=$roots ;; esac
     # --fromfile and --fromtabfile read their roots as input files
     case " $args " in *" --fromfile "* | *" --fromtabfile "*) rlist="paths.txt tabs.txt /no/such/root" ;; esac
+    # a fourth column names the set's own roots
+    [ -n "${rts:-}" ] && rlist=$rts
     for lc in $locales; do
         for r in $rlist; do
             [ "$r" = "-" ] && r=""
@@ -145,7 +165,7 @@ while IFS="$tab" read -r id cls args; do
             fi
             if [ "$trc" != "$arc" ]; then
                 case " $args " in
-                *" --du "* | *" --prune "* | *" --matchdirs "*)
+                *" --du "* | *" --prune "* | *" --matchdirs "* | *" --filelimit"* | *" --condense "*)
                     # DEVIATION D1 (C aspen tests/golden/deviations.sh)
                     if [ "$trc" != 0 ] || [ "$arc" != 2 ]; then ok=0; fi
                     ;;
