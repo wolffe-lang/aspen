@@ -5,7 +5,7 @@ directory lister whose output is byte-identical to `tree` 2.3.2's.
 
 The name is the maintainer's pick: in the Yellowstone trophic cascade the
 wolves' return let the aspens recover. Track 14 of the wolffe-lang org
-(ruling #102); lanes `apNN`.
+(ruling #102); lanes `apNN`. Public since 2026-10-21.
 
 ## What it is
 
