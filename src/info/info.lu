@@ -74,7 +74,7 @@ pub fn user_name(mut c: Cols, uid: int) -> str {
     if nm.len == 0 {
         nm = "{int32(uid)}"
     }
-    c.unames[uid] = nm
+    c.unames[uid] = copy nm
     nm
 }
 
@@ -92,7 +92,7 @@ pub fn group_name(mut c: Cols, gid: int) -> str {
     if nm.len == 0 {
         nm = "{int32(gid)}"
     }
-    c.gnames[gid] = nm
+    c.gnames[gid] = copy nm
     nm
 }
 

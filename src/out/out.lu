@@ -19,7 +19,7 @@ pub fn to_fd(fd: int) -> Out {
 pub fn flush(mut o: Out) {
     if o.buf.len > 0 {
         fs_write_chunk(o.fd, o.buf) else |_| {}
-        o.buf = List[byte]()
+        (mut o.buf).reset()
     }
 }
 

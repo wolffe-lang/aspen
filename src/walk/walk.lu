@@ -1138,7 +1138,7 @@ fn decide(mut w: Walk, o: opts.Opts, e: ent.Ent, depth: int) -> (bool, str, bool
                 descend = false
             }
         } else {
-            w.seen[k] = true
+            w.seen[copy k] = true
         }
     }
     if o.xdev && e.kind == ent.dir() {
