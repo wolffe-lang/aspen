@@ -1,0 +1,94 @@
+//! The strftime rows, in both dialects: glibc's (the container's C
+//! library, measured with Python's ctypes calling its `strftime` on the
+//! same `tm`) and macOS's BSD one (nomad-1's, measured the same way):
+//! the conversions, the pad flags and widths, what a non-conversion
+//! prints, the composites, the 255-byte cap.
+
+use clock
+use tfmt
+
+fn tm(hour: int, yday: int) -> clock.Tm {
+    clock.Tm {
+        year: 2001,
+        mon: 2,
+        mday: 3,
+        hour: hour,
+        min: 5,
+        sec: 6,
+        wday: 6,
+        yday: yday,
+        isdst: false,
+        gmtoff: 0,
+        zone: "UTC",
+        epoch: 981209106,
+    }
+}
+
+fn g(fmt: str, t: clock.Tm) -> str {
+    str_from_utf8(tfmt.format(fmt, t, false)) else "<not utf-8>"
+}
+
+fn b(fmt: str, t: clock.Tm) -> str {
+    str_from_utf8(tfmt.format(fmt, t, true)) else "<not utf-8>"
+}
+
+fn zs(n: int) -> str {
+    var s = ""
+    var i = 0
+    while i < n {
+        s += "Z"
+        i += 1
+    }
+    s
+}
+
+fn main() {
+    let t = tm(14, 33)
+    // glibc
+    assert(
+        g("%0d|%0e|%0k|%-e|%-k|%_H|%_d|%-y|%0Y|%-Y|%_Y", t) ==
+            "03|03|14|3|14|14| 3|1|2001|2001|2001",
+        "glibc pad flags",
+    )
+    assert(g("%-q|%_q|%0q", t) == "%-q|%_q|%0q", "glibc: no conversion, copied as written")
+    assert(
+        g("%E%|%Eq|%EY|%Oy|%OB|%Ec|%Ex|%EX|%OH", t) ==
+            "%|%Eq|2001|01|February|Sat Feb  3 14:05:06 2001|02/03/01|14:05:06|14",
+        "glibc E and O",
+    )
+    assert(g("%I %l %p %r", t) == "02  2 PM 02:05:06 PM", "glibc twelve hours")
+    assert(g("%G %g %V %U %W %u %w %j", t) == "2001 01 05 04 05 6 6 034", "glibc weeks")
+    assert(
+        g("%P|%5d|%^b|%#Z|%10Y|%-5d|%_5d", t) == "pm|00003|FEB|utc|0000002001|    3|    3",
+        "glibc widths and case",
+    )
+    assert(g("%%%", t) == "%%", "glibc a lone trailing percent")
+    assert(
+        g("%c|%D|%x|%X|%T|%R|%F|%h|%C|%y|%s|%z|%Z", t) ==
+            "Sat Feb  3 14:05:06 2001|02/03/01|02/03/01|14:05:06|14:05:06|14:05|2001-02-03|Feb|20|01|981209106|+0000|UTC",
+        "glibc composites",
+    )
+    assert(g(zs(270), t) == zs(254), "glibc stops at 254")
+    assert(g(zs(253) + "%Y", t) == zs(253), "glibc drops a piece that does not fit")
+    // BSD (macOS)
+    assert(
+        b("%0d|%0e|%0k|%-e|%-k|%_H|%_d|%-y|%0Y|%-Y|%_Y", t) ==
+            "03|03|14|3|14|14| 3|01|2001|2001|2001",
+        "BSD pad flags, none on %y and %Y",
+    )
+    assert(b("%-q|%_q|%0q", t) == "q|q|q", "BSD: no conversion prints the character")
+    assert(
+        b("%E%|%Eq|%EY|%Oy|%OB|%Ec|%Ex|%EX|%OH", t) ==
+            "%|q|2001|01|February|Sat Feb  3 14:05:06 2001|02/03/01|14:05:06|14",
+        "BSD E and O",
+    )
+    assert(b("%I %l %p %r", t) == "02  2 PM 02:05:06 PM", "BSD twelve hours")
+    assert(b("%G %g %V %U %W %u %w %j", t) == "2001 01 05 04 05 6 6 034", "BSD weeks")
+    assert(b("%v|%+", t) == " 3-Feb-2001|Sat Feb  3 14:05:06 UTC 2001", "BSD %v and %+")
+    assert(b("%P|%5d|%^b|%#Z|%10Y", t) == "P|5d|^b|#Z|10Y", "BSD has no widths")
+    assert(b("%%%", t) == "%%", "BSD a lone trailing percent")
+    assert(b(zs(270), t) == zs(255), "BSD fills all 255")
+    let t2 = tm(4, 5)
+    assert(b("%j|%-j|%_j|%0j|%-u|%_C", t2) == "006|6|  6|006|6|20", "BSD flags by field")
+    assert(g("%j|%-j|%_j|%6j|%-6d|%_6C", t2) == "006|6|  6|000006|     3|    20", "glibc widths")
+}
