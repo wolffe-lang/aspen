@@ -127,16 +127,26 @@ other() { # script, tag
     _rc=$?
     _v1=0
     _v2=0
+    _show=0
     while IFS= read -r _l; do
         case "$_l" in
         "$_tag"*) ;;
-        *) continue ;;
+        *)
+            # the lines a script prints after a report (its diff), shown
+            # for a STOP report, at most eight
+            if [ "$_show" -gt 0 ]; then
+                echo "      $_l" | cut -c1-240
+                _show=$((_show - 1))
+            fi
+            continue
+            ;;
         esac
+        _show=0
         _k=$(classify_report "$_s" "$_l")
         case "$_k" in
         ok) ;;
         skip) skips=$((skips + 1)); echo "  $_s SKIP: $_l" ;;
-        v1) _v1=$((_v1 + 1)); echo "  $_s v1: $_l" ;;
+        v1) _v1=$((_v1 + 1)); _show=8; echo "  $_s v1: $_l" ;;
         *) _v2=$((_v2 + 1)) ;;
         esac
     done <"$work/$_s.out"
