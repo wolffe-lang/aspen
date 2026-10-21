@@ -1,0 +1,169 @@
+#!/bin/sh
+# oracle — aspen against tree 2.3.2 on the generated fixtures, byte for byte.
+#
+#   tools/oracle [--bin ASPEN] [--only OPT] [--locales "C C.UTF-8"] [--sets FILE]
+#
+# For every set of tests/oracle/sets.tsv (one invocation per line), every
+# fixture tests/fixtures/mkfixtures writes, and every locale, `tree -n ARGS
+# ROOT` and `aspen -n ARGS ROOT` run from the fixture directory, and their
+# stdout, stderr and exit status are compared (and -o FILE's file). The
+# only normalisations are C aspen's sanctioned ones (its tests/golden/
+# usage.sh and run.sh): the program name at the start of a diagnostic line
+# and of the usage synopsis; DEVIATION D2's empty `"contents":[ ]`, which
+# tree leaks after an error and aspen omits; and DEVIATION D1's status:
+# under --du, --prune or --matchdirs tree exits 0 after an open error where
+# aspen, consistently, exits 2.
+#
+# A v1 set must agree. A v2 set is "not yet": aspen must refuse it by name
+# with status 2, and tree's answer is printed (status, stdout bytes and
+# lines) so ap01 starts from numbers. `--only OPT` keeps the sets whose
+# arguments contain OPT. Prints `N agree / M differ / K not-yet`; exit 1
+# when anything differs, 2 when the harness cannot run.
+#
+# Run it in the oracle's container (tools/in-container), as a non-root
+# user: the fixtures hold a FIFO and 0000 directories (RULES §5). The
+# locale is LC_ALL (C by default, C.UTF-8 for the UTF-8 line set and
+# names) and TZ is UTC.
+set -u
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+bin=$ASPEN_ROOT/target/release/aspen
+only=""
+locales="C C.UTF-8"
+sets=$ASPEN_ROOT/tests/oracle/sets.tsv
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --bin) bin=$2; shift 2 ;;
+    --only) only=$2; shift 2 ;;
+    --locales) locales=$2; shift 2 ;;
+    --sets) sets=$2; shift 2 ;;
+    *) echo "oracle: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+case "$bin" in /*) ;; *) bin=$(pwd)/$bin ;; esac
+[ -x "$bin" ] || { echo "oracle: no aspen at $bin" >&2; exit 2; }
+tv=$(tree --version 2>/dev/null | head -1)
+case "$tv" in
+"tree v2.3.2 "*) echo "oracle: the oracle is $tv" ;;
+*) echo "oracle: REFUSED — tree is '$tv', the oracle is tree v2.3.2" >&2; exit 2 ;;
+esac
+echo "oracle: aspen is $bin ($("$bin" --version))"
+if [ "$(id -u)" = 0 ]; then
+    echo "oracle: REFUSED — running as root, a 0000 directory is not denied (run in the container as a user)" >&2
+    exit 2
+fi
+export TZ=UTC
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/aspen-oracle.XXXXXX") || exit 2
+trap 'chmod -R u+rwx "$work" 2>/dev/null; rm -rf "$work"' EXIT INT TERM
+fx=$work/fx
+sh "$ASPEN_ROOT/tests/fixtures/mkfixtures" "$fx" >/dev/null || { echo "oracle: the fixtures did not build" >&2; exit 2; }
+roots="main wide deny empty afile lnkroot /no/such/root"
+
+normerr() { sed 's/^tree: /PROG: /; s/^aspen: /PROG: /; s/^usage: tree /usage: PROG /; s/^usage: aspen /usage: PROG /'; }
+normout() { sed 's/^usage: tree /usage: PROG /; s/^usage: aspen /usage: PROG /; s/,"contents":\[ *\]//g'; }
+
+agree=0
+differ=0
+notyet=0
+shown=0
+v2tab=$work/v2.tsv
+: >"$v2tab"
+
+# run SIDE PROG LOCALE ROOT ARGS: one side of one case, into $work/SIDE.*
+run() {
+    _side=$1 _prog=$2 _lc=$3 _root=$4 _args=$5
+    rm -f "$work/$_side.file"
+    (
+        cd "$fx" || exit 2
+        set -f
+        eval "set -- $_args"
+        _n=$#
+        for _w in "$@"; do
+            [ "$_w" = %O ] && _w=$work/$_side.file
+            set -- "$@" "$_w"
+        done
+        shift "$_n"
+        if [ -n "$_root" ]; then
+            LC_ALL=$_lc exec "$_prog" -n "$@" "$_root"
+        else
+            LC_ALL=$_lc exec "$_prog" -n "$@"
+        fi
+    ) >"$work/$_side.out.raw" 2>"$work/$_side.err.raw" </dev/null
+    echo $? >"$work/$_side.rc"
+    normout <"$work/$_side.out.raw" >"$work/$_side.out"
+    normerr <"$work/$_side.err.raw" >"$work/$_side.err"
+}
+
+show() { # a differing case
+    shown=$((shown + 1))
+    [ "$shown" -gt 40 ] && return
+    echo "  DIFF [$1/$2/$3]: tree rc $(cat "$work/t.rc"), aspen rc $(cat "$work/a.rc")"
+    diff "$work/t.out" "$work/a.out" | sed -n '1,12p' | sed 's/^/    out /'
+    diff "$work/t.err" "$work/a.err" | sed -n '1,6p' | sed 's/^/    err /'
+    if [ -f "$work/t.file" ] || [ -f "$work/a.file" ]; then
+        diff "$work/t.filen" "$work/a.filen" 2>&1 | sed -n '1,8p' | sed 's/^/    file /'
+    fi
+}
+
+tab=$(printf '\t')
+while IFS="$tab" read -r id cls args; do
+    case "$id" in '' | '#'*) continue ;; esac
+    if [ -n "$only" ]; then
+        case " $args " in *"$only"*) ;; *) continue ;; esac
+    fi
+    # a help/usage set needs no root; every other runs over each root
+    case "$id" in help | bad-long | bad-short | missing-pattern | level-missing) rlist="-" ;; *) rlist=$roots ;; esac
+    for lc in $locales; do
+        for r in $rlist; do
+            [ "$r" = "-" ] && r=""
+            run t tree "$lc" "$r" "$args"
+            run a "$bin" "$lc" "$r" "$args"
+            trc=$(cat "$work/t.rc")
+            arc=$(cat "$work/a.rc")
+            label=${r:-none}
+            if [ "$cls" = v2 ]; then
+                notyet=$((notyet + 1))
+                first=$(printf '%s\n' "$args" | awk '{ print $1 }')
+                first=${first%%=*}
+                if [ "$arc" != 2 ] || ! grep -qF -- "$first" "$work/a.err"; then
+                    differ=$((differ + 1))
+                    echo "  NOT REFUSED [$id/$lc/$label]: aspen rc $arc, stderr: $(head -1 "$work/a.err.raw")"
+                fi
+                printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$lc" "$label" "$trc" \
+                    "$(wc -c <"$work/t.out.raw" | tr -d ' ')" "$(wc -l <"$work/t.out.raw" | tr -d ' ')" >>"$v2tab"
+                continue
+            fi
+            ok=1
+            cmp -s "$work/t.out" "$work/a.out" || ok=0
+            cmp -s "$work/t.err" "$work/a.err" || ok=0
+            if [ -f "$work/t.file" ] || [ -f "$work/a.file" ]; then
+                normout <"$work/t.file" >"$work/t.filen" 2>/dev/null
+                normout <"$work/a.file" >"$work/a.filen" 2>/dev/null
+                cmp -s "$work/t.filen" "$work/a.filen" || ok=0
+            fi
+            if [ "$trc" != "$arc" ]; then
+                case " $args " in
+                *" --du "* | *" --prune "* | *" --matchdirs "*)
+                    # DEVIATION D1 (C aspen tests/golden/deviations.sh)
+                    if [ "$trc" != 0 ] || [ "$arc" != 2 ]; then ok=0; fi
+                    ;;
+                *) ok=0 ;;
+                esac
+            fi
+            if [ "$ok" = 1 ]; then
+                agree=$((agree + 1))
+            else
+                differ=$((differ + 1))
+                show "$id" "$lc" "$label"
+            fi
+        done
+    done
+done <"$sets"
+
+if [ -s "$v2tab" ]; then
+    echo "oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):"
+    awk -F'\t' '$2 == "C" && $3 == "main" { printf "  %-14s rc %s  %7s bytes %5s lines\n", $1, $4, $5, $6 }' "$v2tab"
+fi
+[ "$shown" -gt 40 ] && echo "oracle: ($((shown - 40)) more differences not shown)"
+echo "oracle: $agree agree / $differ differ / $notyet not-yet"
+[ "$differ" = 0 ]
