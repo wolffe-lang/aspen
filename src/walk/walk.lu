@@ -324,7 +324,7 @@ fn walk_dir(mut w: Walk, o: opts.Opts, path: str, take rows: List[List[byte]], d
             w.files += 1
         }
         let descend = descends(o, ev[k], depth)
-        let cp = if descend || o.fullpath then join(path, ev[k].nm) else ""
+        let cp = if descend || o.fullpath || w.t.debug then join(path, ev[k].nm) else ""
         text.entry(mut w.t, o, ev[k], cp, depth, is_last)
         if descend {
             var opened = true
@@ -505,17 +505,30 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
             } else {
                 w.files += 1
             }
+            // tree adds the root's own size to --du's total even when it
+            // cannot open it; C aspen does not (docs/MAP.md, "Where the
+            // port follows tree over C aspen")
+            if o.duflag {
+                w.size += st.size
+            }
         } else {
             w.errors += 1
         }
         return
     }
-    // the root's own line shows its lstat (`src/traverse.c:1342`)
+    // the root's own line shows its lstat (`src/traverse.c:1342`); -J
+    // types the root by it too, metadata flags or none: tree calls a
+    // symlink to a directory "link" (C aspen says "directory" when no
+    // flag stat'ed it, `src/render/json.c:294`; docs/MAP.md)
     var has_st = false
     var st = ent.no_meta()
-    if o.sizeflag || o.permflag || o.dateflag || o.duflag || o.classify {
+    var rkind = ent.dir()
+    if o.sizeflag || o.permflag || o.dateflag || o.duflag || o.classify || w.is_json {
         let (h, s) = root_meta(root)
-        has_st = h
+        if h {
+            rkind = s.kind
+        }
+        has_st = h && (o.sizeflag || o.permflag || o.dateflag || o.duflag || o.classify)
         st = s
     }
     if w.is_json || full_tree(o) {
@@ -526,17 +539,18 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
         }
         if o.duflag {
             let dusum = du_level(mut w, top)
-            // the total is SET per root, so several roots report the last
-            // one's (`src/traverse.c:1375`)
+            // tree sums every root's total; C aspen SETS it per root, so
+            // several roots report only the last one's (`src/traverse.c:1375`;
+            // docs/MAP.md)
             if has_st {
                 st.size = st.size + dusum
-                w.size = st.size
+                w.size += st.size
             } else {
-                w.size = dusum
+                w.size += dusum
             }
         }
         if w.is_json {
-            json.tree(mut w.j, o, dr, st, has_st, w.ents, top, last_root)
+            json.tree(mut w.j, o, dr, rkind, st, has_st, w.ents, top, last_root)
         } else {
             text.root(mut w.t, o, dr, "", st, has_st)
             if top.len > 0 {

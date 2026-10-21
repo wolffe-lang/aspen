@@ -216,13 +216,14 @@ pub fn failed_root(mut j: Json, o: opts.Opts, root: str, st: ent.Meta, has_st: b
     out.c(mut j.o, 10)
 }
 
-/// An opened root and its built tree (`src/render/json.c:294`): the root
-/// counts as a directory, and has a contents array, only when it has at
-/// least one entry.
+/// An opened root and its built tree (`src/render/json.c:294`), typed by
+/// its `lstat` (`rkind`): the root counts as a directory, and has a
+/// contents array, only when it has at least one entry.
 pub fn tree(
     mut j: Json,
     o: opts.Opts,
     root: str,
+    rkind: int,
     st: ent.Meta,
     has_st: bool,
     ents: List[ent.Ent],
@@ -230,7 +231,7 @@ pub fn tree(
     last: bool,
 ) {
     indent(mut j, 0)
-    let rtype = if has_st && st.kind != 1 then ent.type_name(st.kind) else "directory"
+    let rtype = if rkind != 1 then ent.type_name(rkind) else "directory"
     out.s(mut j.o, "{{\"type\":\"")
     out.s(mut j.o, rtype)
     out.s(mut j.o, "\",\"name\":\"")
