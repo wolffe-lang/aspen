@@ -1,0 +1,108 @@
+#!/bin/sh
+# perf — the perf row: aspen within 2x of C aspen's wall time.
+#
+#   tools/perf [--bin ASPEN] [--c-bin C_ASPEN] [--runs N] [--ratio R]
+#
+# Two workloads, generated in /tmp (the container's, RULES §5):
+#   wide1k    one directory of 1,000 entries (990 files, 10 directories)
+#   tree100k  100 directories of 1,000 files each: 100,000 files
+# and two listings of each: the default (no stat, d_type only) and -s
+# (every entry stat'ed). tree 2.3.2, C aspen (aspen.pin, built in the
+# container) and aspen each list every workload N times (default 3),
+# interleaved, under `taskset -c 0-3`, output to /dev/null, wall time from
+# `date +%s%N`. THE GATE is the contract's row, the listing: aspen's
+# median at most R (default 2) times C aspen's on both default rows. The
+# -s rows are measured and printed, not gated: there C aspen stats on a
+# thread pool (src/traverse.c:393) and so does aspen, but aspen's main
+# thread still does more per entry (docs/MAP.md; ap01's). Exit 1 on a
+# gated row over the ratio. C aspen's own gate (bench/gate.sh) is "faster
+# than tree"; the 2x-of-C-aspen gate is ap00's, its ratchet a later ruling.
+set -u
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+bin=$ASPEN_ROOT/target/release/aspen
+cbin=$ASPEN_ROOT/.oracle/c-aspen/aspen
+runs=3
+ratio=2
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --bin) bin=$2; shift 2 ;;
+    --c-bin) cbin=$2; shift 2 ;;
+    --runs) runs=$2; shift 2 ;;
+    --ratio) ratio=$2; shift 2 ;;
+    *) echo "perf: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+for b in "$bin" "$cbin"; do
+    [ -x "$b" ] || { echo "perf: no binary at $b" >&2; exit 2; }
+done
+command -v taskset >/dev/null 2>&1 || { echo "perf: no taskset" >&2; exit 2; }
+work=$(mktemp -d "${TMPDIR:-/tmp}/aspen-perf.XXXXXX") || exit 2
+trap 'rm -rf "$work"' EXIT INT TERM
+python3 -I - "$work" <<'EOF'
+import os, sys
+w = sys.argv[1]
+d = os.path.join(w, "wide1k")
+os.makedirs(d)
+for i in range(990):
+    open(os.path.join(d, "f%03d" % i), "w").close()
+for i in range(10):
+    os.makedirs(os.path.join(d, "d%d" % i))
+t = os.path.join(w, "tree100k")
+for i in range(100):
+    s = os.path.join(t, "d%03d" % i)
+    os.makedirs(s)
+    for j in range(1000):
+        open(os.path.join(s, "f%04d" % j), "w").close()
+EOF
+echo "perf: tree $(tree --version | head -1 | cut -d' ' -f1-2), C aspen $("$cbin" --version), aspen $("$bin" --version); $runs runs each, taskset -c 0-3, LC_ALL=C"
+now_ns() { date +%s%N; }
+# time_one PROG ARGS...: nanoseconds for one listing
+time_one() {
+    _t0=$(now_ns)
+    LC_ALL=C taskset -c 0-3 "$@" >/dev/null 2>&1
+    _t1=$(now_ns)
+    echo $((_t1 - _t0))
+}
+median() { tr ' ' '\n' | sed '/^$/d' | sort -n | awk '{ a[NR] = $1 } END { print a[int((NR + 1) / 2)] }'; }
+ms() { awk -v n="$1" 'BEGIN { printf "%.1f", n / 1000000 }'; }
+fail=0
+for wl in wide1k tree100k; do
+    for fl in default -s; do
+        args=""
+        [ "$fl" = default ] || args=$fl
+        # one warm-up of each, then the measured runs, interleaved
+        # shellcheck disable=SC2086
+        { tree -n $args "$work/$wl"; "$cbin" $args "$work/$wl"; "$bin" $args "$work/$wl"; } >/dev/null 2>&1
+        tt=""
+        ct=""
+        at=""
+        k=0
+        while [ "$k" -lt "$runs" ]; do
+            # shellcheck disable=SC2086
+            tt="$tt $(time_one tree -n $args "$work/$wl")"
+            # shellcheck disable=SC2086
+            ct="$ct $(time_one "$cbin" $args "$work/$wl")"
+            # shellcheck disable=SC2086
+            at="$at $(time_one "$bin" $args "$work/$wl")"
+            k=$((k + 1))
+        done
+        tm=$(echo "$tt" | median)
+        cm=$(echo "$ct" | median)
+        am=$(echo "$at" | median)
+        r=$(awk -v a="$am" -v c="$cm" 'BEGIN { printf "%.2f", a / c }')
+        rt=$(awk -v a="$am" -v t="$tm" 'BEGIN { printf "%.2f", a / t }')
+        verdict=$(awk -v a="$am" -v c="$cm" -v m="$ratio" 'BEGIN { print (a <= c * m) ? "ok" : "OVER" }')
+        if [ "$fl" != default ]; then
+            verdict="$verdict (reported, not gated)"
+        fi
+        printf 'perf: %-9s %-7s tree %8s ms  C aspen %8s ms  aspen %8s ms  aspen/C %5s  aspen/tree %5s  %s\n' \
+            "$wl" "$fl" "$(ms "$tm")" "$(ms "$cm")" "$(ms "$am")" "$r" "$rt" "$verdict"
+        printf 'perf:   runs (ms): tree%s  C%s  aspen%s\n' \
+            "$(for x in $tt; do printf ' %s' "$(ms "$x")"; done)" \
+            "$(for x in $ct; do printf ' %s' "$(ms "$x")"; done)" \
+            "$(for x in $at; do printf ' %s' "$(ms "$x")"; done)"
+        [ "$verdict" = OVER ] && fail=1
+    done
+done
+[ "$fail" = 0 ] && echo "perf: the listing within ${ratio}x of C aspen on both workloads" || echo "perf: the listing is over ${ratio}x of C aspen"
+exit $fail
