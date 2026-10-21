@@ -252,7 +252,7 @@ pub fn for_charset(cs: str) -> Lines {
     ascii()
 }
 
-/// The effective charset's name (`src/charset.c:126`): `--charset`/`-S`,
+/// The effective charset's name (`src/charset.c:130`): `--charset`/`-S`,
 /// else `$TREE_CHARSET` (set but empty is still set), else `UTF-8` in a
 /// UTF-8 locale; `has` false when none. XML's encoding attribute and
 /// HTML's meta charset print it.

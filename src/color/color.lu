@@ -7,7 +7,7 @@
 
 use out
 
-/// The code slots (`src/color.c:9`'s COL_* order; 6, `do`, a door, is
+/// The code slots (`src/color.c:10`'s COL_* order; 6, `do`, a door, is
 /// a Solaris type no host here has).
 fn c_reset() -> int {
     0
@@ -183,7 +183,7 @@ pub fn off() -> Colors {
     }
 }
 
-/// The enable decision (`src/color.c:108`) for the text format; `tty`
+/// The enable decision (`src/color.c:103`) for the text format; `tty`
 /// is whether the output is a terminal. Answers the map to parse, or ""
 /// and false.
 pub fn enabled(is_text: bool, forcecolor: bool, nocolor0: bool, tty: bool) -> (bool, str) {
@@ -225,7 +225,7 @@ pub fn enabled(is_text: bool, forcecolor: bool, nocolor0: bool, tty: bool) -> (b
     (true, cs)
 }
 
-/// A colorizer from map `src` (`src/color.c:79`'s parse: `:`-separated
+/// A colorizer from map `src` (`src/color.c:66`'s parse: `:`-separated
 /// tokens, empty ones skipped as `strtok` skips them; `*ext=code` pushes
 /// an extension, newest first; `ln=target` colours a link as its target).
 pub fn parse(src: str) -> Colors {
@@ -298,7 +298,7 @@ fn ends_with_bytes(name: List[byte], from: int, to: int, ext: str) -> bool {
     true
 }
 
-/// The colour for a name (`src/color.c:185`): `kind` and `mode` are the
+/// The colour for a name (`src/color.c:179`): `kind` and `mode` are the
 /// file's type and 0o7777 bits (kind -1: no mode, `normal`), `name[from..
 /// to]` the name an extension matches. True when a code was written
 /// (the caller then calls `end`).
@@ -378,7 +378,7 @@ pub fn apply(
     print_color(c, mut o, c_normal())
 }
 
-/// The end of a coloured name (`src/color.c:243`): `ec`, else `lc` `rs`
+/// The end of a coloured name (`src/color.c:238`): `ec`, else `lc` `rs`
 /// `rc`.
 pub fn end(c: Colors, mut o: out.Out) {
     if c.has[c_end()] {

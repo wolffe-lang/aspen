@@ -35,7 +35,7 @@ use vers
 use xml
 
 /// What a walk is built from, kept so `-R` can build another for a
-/// subtree's `00Tree.html` (`src/render/unix.c:388`).
+/// subtree's `00Tree.html` (`src/render/unix.c:396`).
 pub struct Env {
     utf8: bool,
     macos: bool,
@@ -165,7 +165,7 @@ fn full_tree(o: opts.Opts) -> bool {
     o.duflag || o.prune || o.matchdirs || o.filelimit > 0 || o.condense
 }
 
-/// The stat pool's plan (`asp_statprov_create`, `src/traverse.c:347`):
+/// The stat pool's plan (`asp_statprov_create`, `src/traverse.c:345`):
 /// wanted when some entry is stat'ed, `--threads 1` and `ASP_IO=serial`
 /// keep it serial, `--fromfile` stats nothing; the worker count is
 /// `--threads N`, else the CPUs wolf-std counts, at most 16.
@@ -919,7 +919,7 @@ fn cmp(o: opts.Opts, ev: List[ent.Ent], a: int, b: int) -> int {
     basecmp(o, ev[a], ev[b])
 }
 
-/// The display order of `ev` (`asp_sort`, `src/sort.c:214`): none under
+/// The display order of `ev` (`asp_sort`, `src/sort.c:219`): none under
 /// `-U`; else a bottom-up merge sort of indices, O(n log n). The plain
 /// name order (no other key, no `--dirsfirst`/`--filesfirst`) compares a
 /// packed key first: a name's first seven bytes as one `int` (no name
@@ -1157,7 +1157,7 @@ fn l_comment(mut w: Walk, o: opts.Opts, e: ent.Ent, depth: int) {
 }
 
 /// `-R`: re-render `path`'s subtree into `path/00Tree.html` in the same
-/// line format (`src/render/unix.c:388`, `src/render/html.c:330`); false
+/// line format (`src/render/unix.c:396`, `src/render/html.c:331`); false
 /// when the file cannot be created (an I/O error: status 2, D1).
 fn rerun(w: Walk, o: opts.Opts, path: str) -> bool {
     let fd = fs_create("{path}/00Tree.html") else |_| {
@@ -1339,7 +1339,7 @@ fn condense_entry(mut w: Walk, o: opts.Opts, k: int) {
     }
 }
 
-/// `--condense` and `--prune`'s bottom-up pass (`src/traverse.c:946`),
+/// `--condense` and `--prune`'s bottom-up pass (`src/traverse.c:940`),
 /// interleaved as tree does: a node's subtree first, then the node is
 /// condensed, then its parent drops it when it ended up empty.
 fn condense_prune(mut w: Walk, o: opts.Opts, arr: List[int], do_prune: bool) -> List[int] {

@@ -336,7 +336,7 @@ pub fn date(z: clock.Zone, now: int, t: int) -> str {
     "{months[m - 1]} {day} {two(hh)}:{two(mm)}"
 }
 
-/// Whether any bracket column is on (`src/render/fileinfo.c:97`).
+/// Whether any bracket column is on (`src/render/fileinfo.c:79`).
 pub fn any(o: opts.Opts) -> bool {
     o.inodeflag || o.devflag || o.permflag || o.userflag || o.groupflag || o.sizeflag || o.dateflag
 }

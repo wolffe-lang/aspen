@@ -156,23 +156,23 @@ lane's report, not filed):
    a file it cannot load is `tree: Could not load gitignore file` (or
    `infofile`), status 1, before any output and before a later bad flag;
    every one given is used. C aspen keeps the last, and silently skips one
-   it cannot open (`src/options.c:309`, `src/traverse.c:1320`); an
+   it cannot open (`src/options.c:313`, `src/traverse.c:1323`); an
    absolute pattern in a `--gitfile` is not relative to the working
    directory in tree (`/r/c.c` does not hide `./r/c.c`).
 6. `-H`'s root: tree types it by its `lstat` (a symlink root's href has no
    trailing `/`) and, under `-C`, classes it so (a symlink root is `EXEC`
    by its link's mode bits); C aspen types it a directory unless a flag
    stat'ed it and classes a non-directory root through a NULL entry
-   (`src/render/html.c:280`, `:144`).
+   (`src/render/html.c:245`, `:136`).
 7. `-H -C`'s class of an entry: tree's is `DIR`, then `EXEC` for any
    execute bit (a fifo's or a socket's too), then the type, a link classed
    by its target; C aspen's uses `ENT_EXEC`, set for regular files alone
-   (`src/render/html.c:122`).
+   (`src/render/html.c:112`).
 8. `--hyperlink`: tree links a root that exists but cannot be opened (a
-   file root); C aspen only an opened one (`src/render/unix.c:238`).
+   file root); C aspen only an opened one (`src/render/unix.c:239`).
 9. `-X` on a symlink root: tree's element is `<link>`, as `-J`'s type is
    "link" (item 1); C aspen's is `<directory>` unless a flag stat'ed the
-   root (`src/render/xml.c:262`).
+   root (`src/render/xml.c:271`).
 
 ## 6. Bench
 

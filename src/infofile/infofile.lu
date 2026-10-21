@@ -62,7 +62,7 @@ fn parse(take base: List[byte], text: List[byte]) -> Info {
     inf
 }
 
-/// `<dir>/.info`, when it can be read (`src/info.c:84`).
+/// `<dir>/.info`, when it can be read (`src/info.c:78`).
 pub fn load_dir(dir: str) -> (bool, Info) {
     let text = fs_read_bytes("{dir}/.info") else |_| {
         return (false, Info { base: List[byte](), comments: List[Comment]() })
@@ -80,7 +80,7 @@ pub fn load_file(path: str) -> (bool, Info) {
 
 /// The description lines for the entry at `path` (its name from
 /// `nfrom`), the comment's index pair (file, comment) or (-1, -1)
-/// (`src/info.c:127`): a pattern matches the path, or the name when
+/// (`src/info.c:133`): a pattern matches the path, or the name when
 /// `top` (the entry's own directory has a `.info`; only for the newest
 /// file), or the path against the pattern under the file's base.
 pub fn check(

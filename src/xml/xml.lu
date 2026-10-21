@@ -56,7 +56,7 @@ fn oct4(n: int) -> str {
     "{n / 512 % 8}{n / 64 % 8}{n / 8 % 8}{n % 8}"
 }
 
-/// The metadata attributes (`src/render/xml.c:52`); the size is always
+/// The metadata attributes (`src/render/xml.c:50`); the size is always
 /// the byte count here, `-h` or not.
 fn fill(mut x: Xml, o: opts.Opts, st: ent.Meta, ids: ent.Ids) {
     if o.inodeflag {
@@ -87,7 +87,7 @@ fn fill(mut x: Xml, o: opts.Opts, st: ent.Meta, ids: ent.Ids) {
     }
 }
 
-/// The declaration and `<tree>` (`src/render/xml.c:183`).
+/// The declaration and `<tree>` (`src/render/xml.c:185`).
 pub fn begin(mut x: Xml, o: opts.Opts) {
     out.s(mut x.o, "<?xml version=\"1.0\"")
     if x.has_cs {
@@ -146,7 +146,7 @@ fn close_tag(mut x: Xml, o: opts.Opts, tag: str) {
     nl(mut x, o)
 }
 
-/// One level (`src/render/xml.c:117`); answers the directories and files
+/// One level (`src/render/xml.c:116`); answers the directories and files
 /// it counted.
 fn level(mut x: Xml, o: opts.Opts, a: ent.Arena, arr: List[int], depth: int) -> (int, int) {
     var dirs = 0
@@ -203,7 +203,7 @@ fn level(mut x: Xml, o: opts.Opts, a: ent.Arena, arr: List[int], depth: int) -> 
     (dirs, files)
 }
 
-/// One root (`src/render/xml.c:248`), typed as `-J` types it; answers
+/// One root (`src/render/xml.c:238`), typed as `-J` types it; answers
 /// the directories and files counted.
 pub fn tree(
     mut x: Xml,
@@ -276,7 +276,7 @@ pub fn tree(
     (dirs + d, f)
 }
 
-/// The report (`src/render/xml.c:202`).
+/// The report (`src/render/xml.c:209`).
 pub fn report(mut x: Xml, o: opts.Opts, dirs: int, files: int, size: int) {
     indent(mut x, o, 0)
     out.s(mut x.o, "<report>")

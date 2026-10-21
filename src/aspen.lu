@@ -79,7 +79,7 @@ fn main() -> int {
         }
         fd = f
     }
-    // colour (`options_finalize`, `src/main.c:73`): the text format's whole
+    // colour (`options_finalize`, `src/main.c:77`): the text format's whole
     // decision, -H's -C alone (the CSS class needs the exec bit), never
     // for -J or -X
     var o = copy p.o

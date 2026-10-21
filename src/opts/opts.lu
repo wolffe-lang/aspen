@@ -543,7 +543,7 @@ fn long_val(a: str, pfx: str, i: int, args: List[str]) -> LongVal {
     LongVal { matched: false, value: "", next: i, fail: -1, err: "" }
 }
 
-/// tree's charset list for `--charset` without a value (`src/charset.c:113`):
+/// tree's charset list for `--charset` without a value (`src/charset.c:116`):
 /// the table's names in order, two spaces in.
 fn lines_list() -> str {
     var t = "Valid charsets include:\n"
@@ -668,7 +668,7 @@ pub fn charset_names() -> List[str] {
     ]
 }
 
-/// `--sort`'s names, any case (`src/options.c:221`); -1 for none.
+/// `--sort`'s names, any case (`src/options.c:227`); -1 for none.
 fn sort_of(name: str) -> int {
     let n = name.lower()
     if n == "name" {
@@ -692,7 +692,7 @@ fn sort_of(name: str) -> int {
     -1
 }
 
-/// `--threads`' strict reading (`src/options.c:291`): decimal digits
+/// `--threads`' strict reading (`src/options.c:297`): decimal digits
 /// with an optional sign, 0..65535, nothing after; -1 when it is not.
 pub fn threads_value(v: str) -> int {
     let n = v.len
@@ -982,7 +982,7 @@ fn vfail(lv: LongVal) -> Valued {
     Valued { matched: true, next: lv.next, fail: lv.fail, out: "", err: lv.err }
 }
 
-/// The long options that take a value (`src/options.c:270`), in C
+/// The long options that take a value (`src/options.c:284`), in C
 /// aspen's order.
 fn parse_valued(mut o: Opts, a: str, i: int, args: List[str]) -> Valued {
     let names = [
@@ -1063,7 +1063,7 @@ fn parse_valued(mut o: Opts, a: str, i: int, args: List[str]) -> Valued {
             // tree loads each file as it parses its option, and stops at
             // the first it cannot (measured: before a later bad flag, with
             // no output, status 1); every one is kept, where C aspen keeps
-            // the last (`src/options.c:309`). The parser reads no file:
+            // the last (`src/options.c:313`). The parser reads no file:
             // `loads` lists them in order for the caller (`load_error`)
             (mut o.loads).push(v)
             (mut o.load_git).push(pfx == "--gitfile")

@@ -77,7 +77,7 @@ pub fn trim(s: List[byte]) -> List[byte] {
     out
 }
 
-/// A pattern from a trimmed line (`src/filter.c:43`).
+/// A pattern from a trimmed line (`src/filter.c:45`).
 pub fn new_pat(line: List[byte], from: int) -> Pat {
     var slash = -1
     var i = from
@@ -121,7 +121,7 @@ fn bytes_of(s: str) -> List[byte] {
     b
 }
 
-/// `<dir>/.gitignore`, when it is a regular file (`src/filter.c:80`).
+/// `<dir>/.gitignore`, when it is a regular file (`src/filter.c:96`).
 pub fn load_dir(dir: str) -> (bool, Ignore) {
     let f = "{dir}/.gitignore"
     let empty = Ignore { base: List[byte](), remove: List[Pat](), reverse: List[Pat]() }
@@ -160,7 +160,7 @@ fn matches(p: Pat, path: List[byte], nfrom: int, isdir: bool, ic: bool, base: Li
 }
 
 /// Whether the entry at `path` (its name from `nfrom`) is ignored
-/// (`src/filter.c:166`); the stack's newest file is its last.
+/// (`src/filter.c:167`); the stack's newest file is its last.
 pub fn filtered(stack: List[Ignore], path: List[byte], nfrom: int, isdir: bool, ic: bool) -> bool {
     var filter = false
     var k = stack.len - 1

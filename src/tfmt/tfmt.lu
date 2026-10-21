@@ -1,5 +1,5 @@
 //! tfmt — `--timefmt`'s formatting: C's `strftime` in the C locale, the
-//! one C aspen calls (`src/render/fileinfo.c:63`, `strftime(buf, 255,
+//! one C aspen calls (`src/render/fileinfo.c:60`, `strftime(buf, 255,
 //! fmt, tm)`), aspen's own because wolf has none. The conversions are
 //! POSIX's and the GNU additions the manual documents (`%k %l %P %s`),
 //! with the flags `_ - 0 ^ #`, a field width, and the `E`/`O` modifiers

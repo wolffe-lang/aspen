@@ -85,7 +85,7 @@ fn cat_file(mut h: Html, path: str) {
     out.bytes(mut h.o, b, 0, b.len)
 }
 
-/// The document's head (`src/render/html.c:202`), or `--hintro`'s file.
+/// The document's head (`src/render/html.c:175`), or `--hintro`'s file.
 pub fn begin(mut h: Html, o: opts.Opts) {
     if o.has_hintro {
         cat_file(mut h, o.hintro)
@@ -128,7 +128,7 @@ pub fn begin(mut h: Html, o: opts.Opts) {
     out.s(mut h.o, "</h1><p>\n")
 }
 
-/// The foot (`src/render/html.c:249`), or `--houtro`'s file; the flush.
+/// The foot (`src/render/html.c:218`), or `--houtro`'s file; the flush.
 pub fn end(mut h: Html, o: opts.Opts) {
     if o.has_houtro {
         cat_file(mut h, o.houtro)
@@ -140,7 +140,7 @@ pub fn end(mut h: Html, o: opts.Opts) {
     out.flush(mut h.o)
 }
 
-/// tree's HTML indent (`src/render/html.c:75`): a tab, then per ancestor
+/// tree's HTML indent (`src/render/html.c:70`): a tab, then per ancestor
 /// its glyph (`&nbsp;` three times, fewer under `--compress`, for a
 /// finished one) and a `&nbsp;`, then the connector and a `&nbsp;`.
 fn indent(mut h: Html, o: opts.Opts, depth: int, is_last: bool) {
@@ -176,7 +176,7 @@ fn indent(mut h: Html, o: opts.Opts, depth: int, is_last: bool) {
 }
 
 /// The metadata column with its spaces as `&nbsp;` and four after it
-/// (`html_print` and `emit_info`, `src/render/html.c:97`).
+/// (`html_print` and `emit_info`, `src/render/html.c:91`).
 fn meta(mut h: Html, o: opts.Opts, st: ent.Meta, ids: ent.Ids, has: bool) {
     if !has {
         return
@@ -195,7 +195,7 @@ fn meta(mut h: Html, o: opts.Opts, st: ent.Meta, ids: ent.Ids, has: bool) {
     out.s(mut h.o, "&nbsp;&nbsp;&nbsp;&nbsp;")
 }
 
-/// The CSS class (`src/render/html.c:122`): as tree has it (measured in
+/// The CSS class (`src/render/html.c:112`): as tree has it (measured in
 /// the oracle's container), `DIR` for a directory, then `EXEC` for any
 /// execute bit, a fifo's and a socket's included, then the type; a link
 /// is classed by what it points to, a dangling one `NORM`.
@@ -215,7 +215,7 @@ fn cls(kind: int, mode: int) -> str {
     "NORM"
 }
 
-/// The `<a>` of an entry (`src/render/html.c:137`): `dir[0..dirlen]` its
+/// The `<a>` of an entry (`src/render/html.c:129`): `dir[0..dirlen]` its
 /// directory, `file[ffrom..fto]` the name it shows; `rd` 0 a plain entry,
 /// 1 a directory (a trailing `/`), 2 or more a `-R` boundary (the href
 /// names its `00Tree.html`).
@@ -287,7 +287,7 @@ fn anchor(
     out.s(mut h.o, "</a>")
 }
 
-/// The root line (`src/render/html.c:269`).
+/// The root line (`src/render/html.c:231`).
 pub fn root(
     mut h: Html,
     o: opts.Opts,
@@ -304,7 +304,7 @@ pub fn root(
     meta(mut h, o, st, ids, has_st)
     // the root is classed and typed by its lstat (tree: a symlink root
     // gets no trailing "/" and its link's mode; C aspen types it a
-    // directory unless a flag stat'ed it, `src/render/html.c:280`)
+    // directory unless a flag stat'ed it, `src/render/html.c:245`)
     let known = st.kind != 2
     if !failed || has_st {
         let isdir = if known then st.kind == 1 else true
@@ -324,7 +324,7 @@ pub fn root(
     out.maybe(mut h.o)
 }
 
-/// One entry (`src/render/html.c:302`).
+/// One entry (`src/render/html.c:261`).
 pub fn entry(
     mut h: Html,
     o: opts.Opts,
@@ -389,7 +389,7 @@ pub fn newline(mut h: Html) {
     out.maybe(mut h.o)
 }
 
-/// The report (`src/render/html.c:316`).
+/// The report (`src/render/html.c:308`).
 pub fn report(mut h: Html, o: opts.Opts, dirs: int, files: int, size: int) {
     out.s(mut h.o, "<br><br><p>\n\n")
     if o.duflag {
