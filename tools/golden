@@ -8,21 +8,37 @@
 # directory, its files unedited; the wolf aspen is put where its scripts
 # look (./aspen) and the distribution's tree 2.3.2 where build-ref.sh looks
 # first (tests/.work/ref/tree-2.3.2), so nothing clones or builds tree's
-# source. Then each script that exercises v1 runs as it is:
+# source. Then every script C aspen's own tests/run.sh runs against its
+# binary runs as it is, in its order:
 #
 #   run.sh         the case matrix, in C, en_US.UTF-8 and C.UTF-8
 #   walk.sh        discovery (via C aspen's --asp-debug-walk hook)
-#   outfile.sh     -o FILE        fpath.sh     -f roots
-#   patterns.sh    -P/-I paths    usage.sh     --help and bad command lines
+#   color.sh       -C and the colour environment, piped
+#   pty.sh         colour on a real terminal (a PTY the script starts)
+#   outfile.sh     -o FILE        rerun.sh     -R's 00Tree.html files
+#   cyclic.sh      -l's cycle set over 30 inode layouts
+#   adversarial.sh hostile inputs (a lone-backslash .gitignore, a 64 KiB
+#                  --fromfile line, a 600 KB TREE_COLORS)
+#   patterns.sh    -P/-I paths    fpath.sh     -f roots
+#   usage.sh       --help and bad command lines
+#   fdlimit.sh     a 250-deep chain under a low fd limit
+#   threads.sh     --threads 1 == 16 == tree, the pool's dead zone
 #   deviations.sh  the law where C aspen and tree disagree
-#   structural.sh  -J well-formed fdlimit.sh   a 250-deep chain
+#   structural.sh  -J/-X well-formed
 #
-# Each script's reports are classed: a report about a v1 flag set in the C
-# or C.UTF-8 locale must not exist (a STOP); one about a v2 flag, or any
-# under en_US.UTF-8 (whose strcoll order v1 does not carry; src/locale), is
-# "not yet". For run.sh, every case is counted: N agree / M differ / K
-# not-yet. The other scripts' failing reports are classed the same way.
-# Prints the counts; exit 1 when a v1 report exists, 2 when it cannot run.
+# (flag_coverage.sh lints C aspen's own src/options.c, and fuzz.sh is
+# tools/fuzz.) color.sh and pty.sh list tests/.work's corpus, meta, lnk
+# and weird fixtures, of which C aspen's runner makes only the corpus
+# (walk.sh does); here all four are made first, by C aspen's own
+# generators, so the colour rows list real trees.
+#
+# Each script's reports are classed: a report about an implemented flag
+# set in the C or C.UTF-8 locale must not exist (a STOP); one about a
+# refused flag (--acl, --selinux, --asp-diff: lib-classify.sh), or any
+# under en_US.UTF-8 (whose strcoll order aspen does not carry;
+# src/locale), is "not yet"; a script's own skip is printed and counted.
+# For run.sh, every case is counted: N agree / M differ / K not-yet.
+# Prints the counts; exit 1 when a STOP report exists, 2 when it cannot run.
 #
 # Run it in the oracle's container, as a non-root user.
 set -u
@@ -60,6 +76,7 @@ agree=0
 differ=0
 notyet=0
 coll=0
+skips=0
 
 # --- run.sh: every case of the matrix ------------------------------------
 sh tests/golden/run.sh >"$work/run.out" 2>"$work/run.err"
@@ -118,22 +135,33 @@ other() { # script, tag
         _k=$(classify_report "$_s" "$_l")
         case "$_k" in
         ok) ;;
+        skip) skips=$((skips + 1)); echo "  $_s SKIP: $_l" ;;
         v1) _v1=$((_v1 + 1)); echo "  $_s v1: $_l" ;;
         *) _v2=$((_v2 + 1)) ;;
         esac
     done <"$work/$_s.out"
     differ=$((differ + _v1))
     notyet=$((notyet + _v2))
-    echo "golden: $_s (exit $_rc): $_v1 v1 report(s), $_v2 not-yet report(s); last line: $(tail -1 "$work/$_s.out")"
+    echo "golden: $_s (exit $_rc): $_v1 STOP report(s), $_v2 not-yet report(s); last line: $(tail -1 "$work/$_s.out")"
 }
 other walk.sh "WALK:"
+# the colour scripts' fixtures, made by C aspen's own generators
+for _f in corpus meta lnk weird; do
+    [ -d "tests/.work/$_f" ] || sh "tests/golden/mk$_f.sh" "tests/.work/$_f" >/dev/null
+done
+other color.sh "COLOR"
+other pty.sh "PTY"
 other outfile.sh "OUTFILE:"
-other fpath.sh "FPATH"
+other rerun.sh "RERUN"
+other cyclic.sh "CYCLIC"
+other adversarial.sh "ADVERSARIAL"
 other patterns.sh "PATTERNS"
+other fpath.sh "FPATH"
 other usage.sh "USAGE:"
+other fdlimit.sh "FDLIMIT:"
+other threads.sh "THREADS"
 other deviations.sh "DEVIATIONS"
 other structural.sh "STRUCT"
-other fdlimit.sh "FDLIMIT:"
 
-echo "golden: $agree agree / $differ differ / $notyet not-yet"
+echo "golden: $agree agree / $differ differ / $notyet not-yet ($skips skip(s))"
 [ "$differ" = 0 ]

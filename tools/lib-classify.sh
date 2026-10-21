@@ -1,11 +1,14 @@
 # lib-classify.sh — sourced by tools/golden and tools/fuzz; not executable.
 #
-# classify ARGS: "v1" when every option word in ARGS is one aspen v1
-# implements, else "v2 FLAG" naming the first that is not. Words not
-# starting with "-" are roots (or an option's argument); "--" ends the
-# options. v1's short flags are a d f F s h p D r t A n J, and P I o L with
-# their argument (glued or the next word); v1's long ones are --help
-# --version --noreport --dirsfirst --du --prune --ignore-case --matchdirs.
+# classify ARGS: "v1" when every option word in ARGS is one aspen
+# implements, else "v2 FLAG" naming the first that is not. Since ap01 that
+# is every option of tree 2.3.2 and C aspen but three, which aspen refuses
+# by name with status 2: tree's --acl and --selinux (they read extended
+# attributes, which wolf has no call for) and C aspen's own --asp-diff
+# (notes/ap01-the-second-light.md, the rulings asked). Words not starting
+# with "-" are roots (or an option's argument); "--" ends the options.
+# The short flags that take an argument (glued or the next word) are P I
+# o L H T; the long ones that take one take it as --opt=V or the next word.
 classify() {
     set -f
     # shellcheck disable=SC2086
@@ -16,20 +19,21 @@ classify() {
         shift
         case "$_w" in
         --) echo v1; return ;;
-        --help | --version | --noreport | --dirsfirst | --du | --prune | --ignore-case | --matchdirs) ;;
-        --*) echo "v2 ${_w%%=*}"; return ;;
+        --acl | --selinux | --asp-diff) echo "v2 $_w"; return ;;
+        --compress | --charset | --filelimit | --threads | --timefmt | --sort | --gitfile | --infofile | --hintro | --houtro | --scheme | --authority)
+            [ $# -gt 0 ] && shift ;;
+        --*) ;;
         -?*)
             _r=${_w#-}
             while [ -n "$_r" ]; do
                 _c=${_r%"${_r#?}"}
                 _r=${_r#?}
                 case "$_c" in
-                a | d | f | F | s | h | p | D | r | t | A | n | J) ;;
-                P | I | o | L)
+                P | I | o | L | H | T)
                     if [ -z "$_r" ] && [ $# -gt 0 ]; then shift; fi
                     _r=""
                     ;;
-                *) echo "v2 -$_c"; return ;;
+                *) ;;
                 esac
             done
             ;;
@@ -38,9 +42,10 @@ classify() {
     echo v1
 }
 
-# classify_report SCRIPT LINE: "ok" (a script's own pass line, a loud
-# skip), "v1" (a failure on a v1 surface) or "v2" (a failure on a flag v1
-# does not implement), for one line a C aspen golden script printed.
+# classify_report SCRIPT LINE: "ok" (a script's own pass line), "skip"
+# (its loud skip, counted), "v1" (a failure on an implemented surface) or
+# "v2" (a failure on a flag aspen refuses), for one line a C aspen golden
+# script printed.
 classify_report() {
     _s=$1
     _l=$2
@@ -75,34 +80,53 @@ classify_report() {
     usage.sh)
         case "$_l" in
         *"byte-identical to tree"*) echo ok ;;
-        *"[help]"* | *"[--help]"* | *"[bad-long]"* | *"[bad-short]"* | *"[bad-short-mid]"* | *"[missing-arg]"*) echo v1 ;;
-        *"--version"*) echo v1 ;;
-        *"["*) echo v2 ;;
         *) echo v1 ;;
         esac ;;
     deviations.sh)
         case "$_l" in
         *"all documented deviations hold"* | *"running as root"*) echo ok ;;
-        "DEVIATIONS D1 ["*)
-            _f=${_l#DEVIATIONS D1 \[}
-            _f=${_f%%\]*}
-            case "$_f" in
-            *filelimit* | *root-overlimit* | *condense*) echo v2 ;;
-            *) echo v1 ;;
-            esac ;;
-        "DEVIATIONS D5"* | "DEVIATIONS A4-residual"*) echo v1 ;;
-        "DEVIATIONS D2"* | "DEVIATIONS D3"* | "DEVIATIONS D4"* | "DEVIATIONS D6"* | "DEVIATIONS D7"* | "DEVIATIONS D8"* | "DEVIATIONS A7"* | "DEVIATIONS SR-2.12"*) echo v2 ;;
         *) echo v1 ;;
         esac ;;
     structural.sh)
         case "$_l" in
         *"well-formed"*) echo ok ;;
-        "STRUCT xml"*) echo v2 ;;
         *) echo v1 ;;
         esac ;;
     fdlimit.sh)
         case "$_l" in
-        *"survives a low soft fd limit"* | *"skipping"*) echo ok ;;
+        *"survives a low soft fd limit"*) echo ok ;;
+        *"skipping"*) echo skip ;;
+        *) echo v1 ;;
+        esac ;;
+    color.sh)
+        case "$_l" in
+        "COLOR: matches tree"*) echo ok ;;
+        *) echo v1 ;;
+        esac ;;
+    pty.sh)
+        case "$_l" in
+        "PTY: matches tree"*) echo ok ;;
+        *"skipping"*) echo skip ;;
+        *) echo v1 ;;
+        esac ;;
+    rerun.sh)
+        case "$_l" in
+        "RERUN: ok"*) echo ok ;;
+        *) echo v1 ;;
+        esac ;;
+    cyclic.sh)
+        case "$_l" in
+        "CYCLIC: ok"*) echo ok ;;
+        *) echo v1 ;;
+        esac ;;
+    threads.sh)
+        case "$_l" in
+        "THREADS: parallel stat deterministic"*) echo ok ;;
+        *) echo v1 ;;
+        esac ;;
+    adversarial.sh)
+        case "$_l" in
+        "ADVERSARIAL: hostile inputs survive"* | *"robustness win, parity skipped"*) echo ok ;;
         *) echo v1 ;;
         esac ;;
     *) echo v1 ;;
