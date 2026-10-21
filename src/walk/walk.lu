@@ -350,7 +350,7 @@ fn read_level(
                 m
             }
             e.lnk = w.a.lnks.len
-            (mut w.a.lnks).push(target)
+            (mut w.a.lnks).push(copy target)
             (mut w.a.lstats).push(ent.Lst { mode: 0, ino: 0, dev: 0 })
             var orphan = false
             let tw = fs_stat(lp) else |_| {
@@ -732,7 +732,7 @@ fn stat_batch(
                 }
                 let tix = w.a.coltxt.len
                 if precol {
-                    (mut w.a.coltxt).push(text)
+                    (mut w.a.coltxt).push(copy text)
                 }
                 let lo = id * n / workers
                 var k = lo
@@ -1688,7 +1688,7 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
         if ok {
             w.root_dev = ws[9]
             if o.follow {
-                w.seen[ident(ws[10], ws[9])] = true
+                w.seen[copy ident(ws[10], ws[9])] = true
             }
         }
     }
