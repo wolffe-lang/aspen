@@ -1205,7 +1205,7 @@ fn l_comment(mut w: Walk, o: opts.Opts, e: ent.Ent, depth: int) {
 /// line format (`src/render/unix.c:396`, `src/render/html.c:331`); false
 /// when the file cannot be created (an I/O error: status 2, D1).
 fn rerun(w: Walk, o: opts.Opts, path: str) -> bool {
-    let fd = fs_create("{path}/00Tree.html") else |_| {
+    let fd = fs_create("{path}/00tree.html") else |_| {
         return false
     }
     var sub = make(o, fd, w.env)
