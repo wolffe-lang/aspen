@@ -1,0 +1,43 @@
+//! The metadata column's rows: -h's rounding at its boundaries (half to
+//! even on the exact quotient), -s's width, the permission strings, the
+//! date's two forms.
+
+use clock
+use info
+
+fn main() {
+    assert(info.psize(false, 0) == "           0", "-s pads to 11")
+    assert(info.psize(false, 10485760) == "    10485760", "-s 10 MiB")
+    assert(info.psize(true, 0) == "    0", "-h zero")
+    assert(info.psize(true, 1023) == " 1023", "-h below 1K is bytes")
+    assert(info.psize(true, 1024) == " 1.0K", "-h 1K")
+    assert(info.psize(true, 1280) == " 1.2K", "-h 1.25K ties to even")
+    assert(info.psize(true, 1536) == " 1.5K", "-h 1.5K")
+    assert(info.psize(true, 1331) == " 1.3K", "-h 1.2998 rounds up")
+    assert(info.psize(true, 10187) == " 9.9K", "-h just under the switch")
+    assert(info.psize(true, 10188) == "  10K", "-h at the switch: %3.0f")
+    assert(info.psize(true, 1048575) == " 1024K", "-h the last K: four digits")
+    assert(info.psize(true, 1048576) == " 1.0M", "-h 1M")
+    assert(info.psize(true, 10485760) == "  10M", "-h 10M")
+    assert(info.psize(true, 1073741824) == " 1.0G", "-h 1G")
+    assert(info.prot(0, 420) == "-rw-r--r--", "0644 file")
+    assert(info.prot(1, 493) == "drwxr-xr-x", "0755 dir")
+    assert(info.prot(0, 2541) == "-rwsr-xr-x", "4755 file")
+    assert(info.prot(1, 1023) == "drwxrwxrwt", "1777 dir")
+    assert(info.prot(0, 2048 + 420) == "-rwSr--r--", "suid without x")
+    assert(info.prot(1, 512 + 493 - 1) == "drwxr-xr-T", "sticky without x")
+    assert(info.prot(3, 511) == "lrwxrwxrwx", "a link")
+    assert(info.prot(4, 420) == "prw-r--r--", "a fifo")
+    assert(info.prot(5, 493) == "srwxr-xr-x", "a socket")
+    let z = clock.utc()
+    let now: int = 1792000000
+    // 2001-02-03 04:05:00 UTC: older than six months
+    assert(info.date(z, now, 981173100) == "Feb  3  2001", "an old date")
+    // now is 2026-10-14 17:46:40 UTC; a day before: the recent form
+    assert(info.date(z, now, now - 86400) == "Oct 13 17:46", "a recent date")
+    // in the future: the year form
+    assert(info.date(z, now, now + 3600) == "Oct 14  2026", "a future date")
+    // six months of 31 days ago, and a second more
+    assert(info.date(z, now, now - 16070400) == "Apr 11 17:46", "at the boundary")
+    assert(info.date(z, now, now - 16070401) == "Apr 11  2026", "past it")
+}
