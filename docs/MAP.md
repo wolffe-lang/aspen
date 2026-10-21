@@ -4,8 +4,7 @@ aspen is a port of tenseleyFlow/aspen (MIT, the maintainer's), itself
 written with tree 2.3.2 (GPL-2.0-or-later) as reference; this repository
 GPL-3.0-or-later (ruling #103). This file is the port's map: the C's
 files, the flag surface, the golden suite, the fuzzer and the bench, and
-which part is v1 (ap00) and which is ap01's or later. It is yw00's shape
-for yew.
+where each part landed: v1 (ap00) or ap01. It is yw00's shape for yew.
 
 The C is read at `aspen.pin` (`944a39821549…`) from a clone of the
 maintainer's checkout: only git-tracked files. The maintainer's local,
@@ -46,33 +45,33 @@ patmatch()"), `src/info.h` 1, `src/render/html.c` 2, `src/render/html.h`
 
 ## 2. The C, file by file (7,872 lines under `src/`)
 
-| C file | lines | what it is | wolf | v1? |
+| C file | lines | what it is | wolf | ported |
 |---|---:|---|---|---|
-| `src/main.c` | 184 | entry, locale, `-o FILE`, renderer pick, `--asp-debug-walk` | `src/aspen.lu` | yes (`--asp-diff`: ap01) |
-| `src/options.c`, `.h` | 422 + 87 | tree's command line, usage text | `src/opts` | yes: v1 flags parse, the rest refused by name |
-| `src/traverse.c`, `.h` | 1,427 + 45 | the walk: read, filter, stat, descend; streaming and full-tree engines; `--prune`, `--du`, `--condense`, `--filelimit`, `--fromfile` | `src/walk` | yes but `--condense`, `--filelimit`, `--fromfile`, `-l`, `-x`, `-R`, `--gitignore`, `--info` |
-| `src/sort.c`, `.h` | 288 + 32 | tree's comparators; MSD radix for names | `src/walk` (`order`) | name, `-t`, `-r`, `--dirsfirst` (`-v`, `-c`, `-U`, `--sort`, `--filesfirst`: ap01) |
-| `src/glob.c`, `.h` | 115 + 15 | tree's patmatch | `src/glob` | yes |
-| `src/charset.c`, `.h` | 157 + 35 | the line-drawing table | `src/lines` | yes, widest forms (`--compress`, `--charset`, `-S`: ap01) |
-| `src/render/unix.c`, `.h` | 418 + 43 | the text renderer | `src/text` | yes but colour, hyperlinks, `--metafirst`, `-i`, `--info` comments |
-| `src/render/name.c`, `.h` | 129 + 21 | name escaping (printit) | `src/name` | default branch (`-q`, `-N`, `-Q`: ap01) |
-| `src/render/fileinfo.c`, `.h` | 130 + 28 | `[perm user group size date]` | `src/info`, `src/clock` | `-p`, `-s`, `-h`, `-D` (`-u`, `-g`, `--si`, `--inodes`, `--device`, `--timefmt`, `-c`: ap01) |
-| `src/render/json.c`, `.h` | 349 + 25 | `-J` | `src/json` | yes but `-i`'s compact form, `--compress`, `--info` |
-| `src/render/outbuf.c`, `.h`, `src/dstr.c`, `.h` | 33 + 23, 58 + 27 | buffered output | `src/out` | yes |
-| `src/entry.c`, `.h` | 41 + 58 | one entry | `src/ent` | yes |
-| `src/sys/dir.c`, `.h`, `src/sys/xstat.c`, `.h` | 227 + 45, 34 + 39 | getdents64 / fstatat | wolf-std's `fs_read_dir_entries`, `fs_lstat`, `fs_stat`, `fs_read_link` | yes (path-based, not fd-relative) |
-| `src/pool.c`, `.h` | 224 + 34 | the parallel stat pool | `src/walk` (`stat_batch`: `scope`/`spawn`, same thresholds) | yes |
-| `src/iouring.c`, `.h` | 134 + 34 | io_uring statx batches (`ASP_IO=uring`) | — | ap01+ (no wolf surface) |
-| `src/render/xml.c`, `.h` | 325 + 24 | `-X` | — | ap01 |
-| `src/render/html.c`, `.h`, `src/render/escape.c`, `.h` | 354 + 29, 51 + 20 | `-H`, `-T`, `--nolinks`, URL encoding | — | ap01 |
-| `src/color.c`, `.h` | 249 + 41 | `-C`, LS_COLORS/TREE_COLORS | — | ap01 |
-| `src/filter.c`, `.h` | 185 + 48 | `--gitignore`, `--gitfile` | — | ap01 |
-| `src/info.c`, `.h` | 152 + 37 | `--info`, `--infofile` | — | ap01 |
-| `src/fromfile.c`, `.h` | 299 + 41 | `--fromfile`, `--fromtabfile`, `--fflinks` | — | ap01 |
-| `src/idcache.c`, `.h` | 76 + 17 | `-u`/`-g` name caches | — | ap01 (wolf-std `std.os.users`) |
-| `src/verscmp.c`, `.h` | 68 + 22 | `-v` | — | ap01 |
-| `src/hashtab.c`, `.h` | 82 + 24 | `-l` cycle set | — | ap01 |
-| `src/diff.c`, `.h` | 384 + 31 | `--asp-diff` (aspen-only) | — | ap01+ |
+| `src/main.c` | 184 | entry, locale, `-o FILE`, colour's decision, renderer pick, `--asp-debug-walk` | `src/aspen.lu` | v1, ap01 (`--asp-diff` refused: a ruling) |
+| `src/options.c`, `.h` | 422 + 87 | tree's command line, usage text | `src/opts` | v1, ap01 (all of it; `--acl`/`--selinux` refused by name) |
+| `src/traverse.c`, `.h` | 1,427 + 45 | the walk: read, filter, stat, descend; streaming and full-tree engines; `--prune`, `--du`, `--condense`, `--filelimit`, `--fromfile`, `-l`, `-x`, `-R` | `src/walk` | v1, ap01 |
+| `src/sort.c`, `.h` | 288 + 32 | tree's comparators; MSD radix for names | `src/walk` (`order`, `cmp`) | v1, ap01 (byte order in every locale) |
+| `src/verscmp.c`, `.h` | 68 + 22 | `-v` | `src/vers` | ap01 |
+| `src/glob.c`, `.h` | 115 + 15 | tree's patmatch | `src/glob` | v1 |
+| `src/charset.c`, `.h` | 157 + 35 | the line-drawing table, three widths, comment glyphs | `src/lines` (the names in `src/opts`) | v1, ap01 |
+| `src/render/unix.c`, `.h` | 418 + 43 | the text renderer | `src/text` | v1, ap01 |
+| `src/render/name.c`, `.h` | 129 + 21 | name escaping (printit), `-q -N -Q` | `src/name` | v1, ap01 |
+| `src/render/fileinfo.c`, `.h` | 130 + 28 | `[inode dev perm user group size date]` | `src/info`, `src/clock`, `src/tfmt` | v1, ap01 |
+| `src/render/json.c`, `.h` | 349 + 25 | `-J` | `src/json` | v1, ap01 |
+| `src/render/xml.c`, `.h` | 325 + 24 | `-X` | `src/xml` | ap01 |
+| `src/render/html.c`, `.h`, `src/render/escape.c`, `.h` | 354 + 29, 51 + 20 | `-H`, `-T`, `--nolinks`, URL and HTML encoding | `src/html`, `src/text` (`url_encode`) | ap01 |
+| `src/render/outbuf.c`, `.h`, `src/dstr.c`, `.h` | 33 + 23, 58 + 27 | buffered output | `src/out` | v1 |
+| `src/entry.c`, `.h` | 41 + 58 | one entry | `src/ent` | v1, ap01 (side tables) |
+| `src/sys/dir.c`, `.h`, `src/sys/xstat.c`, `.h` | 227 + 45, 34 + 39 | getdents64 / fstatat | wolf-std's `fs_read_dir_entries`, `fs_lstat`, `fs_stat`, `fs_read_link` | v1 (path-based, not fd-relative) |
+| `src/pool.c`, `.h` | 224 + 34 | the parallel stat pool | `src/walk` (`stat_batch`, `stat_chunk`: `scope`/`spawn`, same thresholds, the caller a lane) | v1, ap01 |
+| `src/iouring.c`, `.h` | 134 + 34 | io_uring statx batches (`ASP_IO=uring`) | `src/walk` (`pool_plan`: C aspen's own notice that io_uring is unavailable) | no wolf surface |
+| `src/color.c`, `.h` | 249 + 41 | `-C`, LS_COLORS/TREE_COLORS | `src/color` | ap01 |
+| `src/filter.c`, `.h` | 185 + 48 | `--gitignore`, `--gitfile` | `src/gitignore` (and the walk-up tree does, `src/walk`) | ap01 |
+| `src/info.c`, `.h` | 152 + 37 | `--info`, `--infofile` | `src/infofile` | ap01 |
+| `src/fromfile.c`, `.h` | 299 + 41 | `--fromfile`, `--fromtabfile`, `--fflinks` | `src/fromfile` | ap01 |
+| `src/idcache.c`, `.h` | 76 + 17 | `-u`/`-g` name caches | `src/info` (`Cols`), wolf-std `std.os.users`, `src/host` | ap01 |
+| `src/hashtab.c`, `.h` | 82 + 24 | `-l` cycle set | `src/walk` (`seen`, a map) | ap01 |
+| `src/diff.c`, `.h` | 384 + 31 | `--asp-diff` (aspen-only) | — | refused by name (a ruling) |
 | `src/arena.c`, `.h`, `src/util.c`, `.h`, `src/version.h` | 124 + 41, 67 + 22, 7 | allocation, helpers, the version | wolf's regions; `opts.version()` | — |
 
 `asp` is the same binary under a second name (`Makefile:81–83`;
@@ -80,13 +79,13 @@ patmatch()"), `src/info.h` 1, `src/render/html.c` 2, `src/render/html.h`
 
 ## 3. The flag surface
 
-tree 2.3.2's flags (its `--help`, C aspen's `src/options.c:33`), by status
-in aspen v1. A v2 flag is refused by name, exit 2
-(`aspen: -X: not implemented in aspen v1 (tree's option, ap01's to port)`).
+tree 2.3.2's flags (its `--help`, C aspen's `src/options.c:33`), all
+parsed. Two of tree's linux options and one of C aspen's own are refused
+by name, exit 2 (`aspen: --acl: not implemented in aspen (…)`):
 
-| v1 | v2 (refused by name; ap01's) |
+| implemented | refused by name |
 |---|---|
-| `-a -d -f -F -s -h -p -D -r -t -A -n -J`, `-L level`, `-P pattern`, `-I pattern`, `-o file`, `--ignore-case --matchdirs --prune --noreport --dirsfirst --du`, `--help --version --`; C aspen's test hook `--asp-debug-walk` | `-C -X -H -T -l -x -R -u -g -q -N -Q -S -c -v -U -i`, `--fromfile --fromtabfile --fflinks --filelimit --charset --sort --inodes --device --timefmt --si --filesfirst --metafirst --gitignore --gitfile --info --infofile --condense --compress --hyperlink --scheme --authority --opt-toggle --nolinks --hintro --houtro --acl --selinux`, C aspen's `--threads` |
+| every short flag of `-acdfghilnpqrstuvxACDFJQNSUX`, `-L level`, `-R`, `-H [-]baseHREF`, `-T title`, `-o file`, `-P pattern`, `-I pattern`; every long one of the usage text but two, with `--opt-toggle`; C aspen's `--threads N` and test hook `--asp-debug-walk` | `--acl`, `--selinux` (tree's: extended attributes, no wolf call); `--asp-diff` (C aspen's own) |
 
 `-A` is tree's ANSI (VT100 alternate character set) line set, not ASCII:
 the manual says so ("-A Turn on ANSI line graphics hack"), and C aspen's
@@ -104,28 +103,35 @@ two documented deviations' shapes (`run.sh:359`).
 
 | script | what | v1's reading |
 |---|---|---|
-| `run.sh` | 286 flag sets over 14 generated fixtures (`mk*.sh`), in C, en_US.UTF-8 and C.UTF-8 | every case counted: v1 or not-yet by its flags |
-| `walk.sh` | discovery against `tree -fiN` | v1 |
-| `outfile.sh`, `fpath.sh`, `patterns.sh` | `-o`, `-f` roots, `-P`/`-I` paths | v1 but their `-X` rows |
-| `usage.sh` | `--help`, bad command lines, missing arguments | v1 but the v2 options' rows |
-| `deviations.sh` | the law where C aspen and tree disagree (D1–D8, A4, A7, SR-2.12) | D1 (`--du`/`--prune`/`--matchdirs`), D5, A4-residual are v1 |
-| `structural.sh` | `-J`/`-X` well-formed | `-J` v1 |
-| `fdlimit.sh` | a 250-deep chain under a low fd limit | v1 (wolf's walk is path-based: no fd per depth) |
-| `fuzz.sh` | seeded random trees | its generator and normalisations, v1's flags: `tools/fuzz` |
-| `color.sh`, `pty.sh`, `rerun.sh`, `cyclic.sh`, `threads.sh`, `adversarial.sh` | colour, `-R`, `-l`, `--threads`, `--gitignore`/`--fromfile`/`TREE_COLORS` inputs | ap01 |
+| `run.sh` | 286 flag sets over 14 generated fixtures (`mk*.sh`), in C, en_US.UTF-8 and C.UTF-8 | every case counted; under en_US.UTF-8 a case that differs is not-yet (collation, `tools/collation`) |
+| `walk.sh` | discovery against `tree -fiN` | clean |
+| `outfile.sh`, `fpath.sh`, `patterns.sh` | `-o`, `-f` roots, `-P`/`-I` paths | clean |
+| `usage.sh` | `--help`, bad command lines, missing arguments | clean |
+| `deviations.sh` | the law where C aspen and tree disagree (D1–D8, A4, A7, SR-2.12) | clean |
+| `structural.sh` | `-J`/`-X` well-formed | clean |
+| `fdlimit.sh` | a 250-deep chain under a low fd limit | clean (wolf's walk is path-based: no fd per depth) |
+| `color.sh`, `pty.sh` | colour, piped and on a PTY the script starts | clean (`tools/golden` makes their four fixtures with C aspen's generators first; C aspen's runner makes only the corpus) |
+| `rerun.sh`, `cyclic.sh`, `threads.sh`, `adversarial.sh` | `-R`'s files, `-l` over 30 inode layouts, `--threads`, hostile inputs | clean |
+| `fuzz.sh` | seeded random trees | its generator and normalisations, its whole pool: `tools/fuzz` |
 | `flag_coverage.sh` | a lint over C aspen's own `options.c` | C aspen's |
 
-The deviations v1 carries (C aspen's law, `tests/golden/deviations.sh`):
-D1, exit 2 on an open error under `--du`/`--prune`/`--matchdirs` where tree
-exits 0; D2, no empty `"contents":[ ]` after an error in `-J`; D5, `-Pfoo`
-is `-P foo` and long options match exactly; A4-residual, under `--prune` a
-`-P` that matches a directory's name gives it no special reveal unless
-`--matchdirs`.
+The deviations carried (C aspen's law, `tests/golden/deviations.sh`, all
+of them): D1, exit 2 on an open or filelimit error in every mode where
+tree's full-tree modes exit 0; D2, no empty `"contents":[ ]` after an
+error in `-J`; D3, `-H`'s percent-encoding of the real byte; D4, a link's
+own `--inodes`/`--device` under `-J`/`-X`; D5, `-Pfoo` is `-P foo` and
+long options match exactly; D6, `-R`'s nested `00Tree.html` indented
+standalone; D7, `-l`'s visited check in sorted order in every mode; D8,
+`-R` a no-op under `-J`/`-X`; A4-residual, under `--prune` a `-P` that
+matches a directory's name gives it no special reveal unless
+`--matchdirs`; A7, `-H`'s own VERSION footer; SR-2.12, a root over
+`--filelimit` is one directory with the marker.
 
 ## 5. Where the port follows tree over C aspen
 
-Three places where C aspen at the pin differs from tree 2.3.2, no golden
-covers it, and no deviation documents it. The port follows tree, the
+Places where C aspen at the pin differs from tree 2.3.2, no golden covers
+it, and no deviation documents it (1–3 ap00's, 4–9 ap01's, each measured
+against tree in the oracle's container). The port follows tree, the
 backstop oracle and C aspen's own invariant ("Parity is the floor",
 README); each is an issue to file on tenseleyFlow/aspen (listed in the
 lane's report, not filed):
@@ -140,6 +146,33 @@ lane's report, not filed):
    for a 5-byte file and an empty directory; 20,860 for `wide deny`); C
    aspen keeps the last root's (`tot->size = rs.size`,
    `src/traverse.c:1378`, `:1397`; 40 and 220).
+4. `--gitignore`: tree "attempts to walk up the directory tree from the
+   given path(s) searching for .gitignore files as it goes, stopping at /
+   or a directory containing a .git directory" and then adds
+   `.git/info/exclude` (its manual); C aspen does not walk up
+   (`src/filter.h:11`, "NOT YET"). Measured: the root itself is asked for
+   a `.git` first; an ancestor's absolute patterns match nothing.
+5. `--gitfile` and `--infofile`: tree loads each as it parses the option;
+   a file it cannot load is `tree: Could not load gitignore file` (or
+   `infofile`), status 1, before any output and before a later bad flag;
+   every one given is used. C aspen keeps the last, and silently skips one
+   it cannot open (`src/options.c:309`, `src/traverse.c:1320`); an
+   absolute pattern in a `--gitfile` is not relative to the working
+   directory in tree (`/r/c.c` does not hide `./r/c.c`).
+6. `-H`'s root: tree types it by its `lstat` (a symlink root's href has no
+   trailing `/`) and, under `-C`, classes it so (a symlink root is `EXEC`
+   by its link's mode bits); C aspen types it a directory unless a flag
+   stat'ed it and classes a non-directory root through a NULL entry
+   (`src/render/html.c:280`, `:144`).
+7. `-H -C`'s class of an entry: tree's is `DIR`, then `EXEC` for any
+   execute bit (a fifo's or a socket's too), then the type, a link classed
+   by its target; C aspen's uses `ENT_EXEC`, set for regular files alone
+   (`src/render/html.c:122`).
+8. `--hyperlink`: tree links a root that exists but cannot be opened (a
+   file root); C aspen only an opened one (`src/render/unix.c:238`).
+9. `-X` on a symlink root: tree's element is `<link>`, as `-J`'s type is
+   "link" (item 1); C aspen's is `<directory>` unless a flag stat'ed the
+   root (`src/render/xml.c:262`).
 
 ## 6. Bench
 
@@ -148,17 +181,19 @@ Linux x86-64 4.7× (flat), 5.2× (wide), 4.7× (mixed), 2.5× (deep) faster
 than tree; macOS 2.8×, 3.4×, 2.7×, 1.6×; 1.3–1.5× when a flag stats every
 entry. Its gate (`bench/gate.sh`): faster than tree.
 
-ap00's row (`tools/perf`, the container on kasumi, `taskset -c 0-3`,
-median of three, interleaved; the numbers are in
-`notes/ap00-the-first-light.md` §4): the listing gated at 2× C aspen on a
-1,000-entry directory and a 100,000-file tree; `-s` measured, not gated.
+The port's rows (`tools/perf`, the container, `taskset -c 0-3`, median of
+three, interleaved): the listing gated at 2× C aspen on a 1,000-entry
+directory and a 100,000-file tree (ap00), and since ap01 `-s` on both
+gated at 2× too; the numbers are in the notes (`notes/ap00-…` §4,
+`notes/ap01-…` §6).
 
 ## 7. Gaps, named
 
-- **Collation.** v1 sorts by byte in every locale. tree and C aspen use
-  `strcoll` (`src/sort.c:244`); C and C.UTF-8 collate by byte, so they
-  agree; a dictionary locale (en_US.UTF-8) can order differently (4 of the
-  golden matrix's v1 cases, every one a dot-name order). ap01.
+- **Collation.** aspen sorts by byte in every locale. tree and C aspen
+  use `strcoll` (`src/sort.c:244`); C and C.UTF-8 collate by byte, so they
+  agree; glibc's en_US.UTF-8 orders 29 of the golden matrix's 286 cases
+  differently, every one by order alone (`tools/collation`; ap01's
+  ruling). macOS's en_US.UTF-8 collates by byte.
 - **Locale detection** reads `LC_ALL`/`LC_CTYPE`/`LANG` and the installed
   locale files, since wolf has no `setlocale` (`src/locale`).
 - **iswprint** is approximated (C0/C1 controls, DEL, U+2028/2029 are not
@@ -166,11 +201,11 @@ median of three, interleaved; the numbers are in
   code points (`src/name`).
 - **Non-UTF-8 names** cannot be stat'ed or descended: wolf paths are `str`
   (wolf-lang#687). No golden or fuzzer name is one.
-- **Speed under `-s`.** Both stat on a pool; aspen's main thread still
-  does more per entry (a path string, a twenty-word `fs_lstat` answer),
-  so `-s` is measured, not gated (ap01: the ratchet ruling).
-- **Memory.** wolf's ambient region keeps every level's rows until the
-  end: 86 MB for the 100,000-file listing against C aspen's 2.8 MB
-  (`/usr/bin/time`, kasumi). A per-level region is ap01's.
-- **Colour.** v1 never colours; a terminal with `LS_COLORS` set gets
-  tree's colours from tree and none from aspen (`-C` is refused).
+- **Extended attributes.** `--acl` and `--selinux` need `getxattr`, which
+  wolf has no call for: refused by name.
+- **Memory.** wolf's arena frees nothing a function's caller can still
+  see before the program ends, and a region per directory level (ap01
+  tried it) is refused by the region checker the moment the level pushes
+  into the writer that outlives it (E1010); the 100,000-file listing
+  holds 64 MB (C aspen 3 MB; ap00 86 MB), the measurement and the probes
+  in `notes/ap01-the-second-light.md` §6.
