@@ -1,6 +1,7 @@
 //! name — printing a name as tree does (C aspen `src/render/name.c`,
-//! "faithful to tree's printit()"): the default branch only (`-q`, `-N`
-//! and `-Q` are ap01's).
+//! "faithful to tree's printit()"), with `-q` (a non-printable character
+//! as `?`), `-N` (every byte as it is) and `-Q` (double quotes around the
+//! name, a quote inside escaped, a space not).
 //!
 //! In the C locale (one byte per character) a name goes through the BYTE
 //! branch (`src/render/name.c:20`): BEL..CR as `\a`..`\r`, a backslash
@@ -37,18 +38,60 @@ fn octal(mut o: out.Out, v: int) {
     }
 }
 
-fn byte_branch(mut o: out.Out, s: List[byte], from: int, to: int) {
+/// `-Q` (`NP_QUOTE`, `src/render/name.h:14`).
+pub fn f_quote() -> int {
+    1
+}
+
+/// `-N` (`NP_NOPRINT`).
+pub fn f_noprint() -> int {
+    2
+}
+
+/// `-q` (`NP_QMARK`).
+pub fn f_qmark() -> int {
+    4
+}
+
+/// The flags `-q`, `-N` and `-Q` set (`src/render/unix.c:23`).
+pub fn flags_of(quote: bool, noprint: bool, qmark: bool) -> int {
+    var f = 0
+    if quote {
+        f = f | 1
+    }
+    if noprint {
+        f = f | 2
+    }
+    if qmark {
+        f = f | 4
+    }
+    f
+}
+
+fn byte_branch(mut o: out.Out, s: List[byte], from: int, to: int, utf8: bool, flags: int) {
+    let quote = flags & 1 != 0
+    let qmark = flags & 4 != 0
     var i = from
     while i < to {
         let c = s[i] as int
-        if c > 32 && c < 127 && c != 92 {
+        if c > 32 && c < 127 && c != 92 && c != 34 {
             (mut o.buf).push(s[i])
-        } else if c >= 7 && c <= 13 {
+        } else if c >= 7 && c <= 13 || c == 92 || c == 34 && quote || c == 32 && !quote {
             (mut o.buf).push(92 as byte)
-            out.s(mut o, "abtnvfr"[c - 7..c - 6])
-        } else if c == 92 || c == 32 {
-            (mut o.buf).push(92 as byte)
+            if c > 13 {
+                (mut o.buf).push(s[i])
+            } else {
+                out.s(mut o, "abtnvfr"[c - 7..c - 6])
+            }
+        } else if c >= 32 && c < 127 {
             (mut o.buf).push(s[i])
+        } else if qmark {
+            // tree keeps a high byte under -q in a multibyte locale
+            if utf8 && c > 127 {
+                (mut o.buf).push(s[i])
+            } else {
+                (mut o.buf).push(63 as byte)
+            }
         } else {
             octal(mut o, c)
         }
@@ -108,12 +151,36 @@ fn decode(s: List[byte], i: int, to: int) -> (int, int) {
     (cp, need + 1)
 }
 
-/// Print `s[from..to]` as tree prints a name; `utf8` is a UTF-8 locale.
+/// Print `s[from..to]` as tree prints a name (`src/render/name.c:61`);
+/// `utf8` is a UTF-8 locale, `flags` the `-q`/`-N`/`-Q` set.
 pub fn put(mut o: out.Out, s: List[byte], from: int, to: int, utf8: bool) {
-    if !utf8 {
-        byte_branch(mut o, s, from, to)
+    put_flags(mut o, s, from, to, utf8, 0)
+}
+
+/// `put` with `-q`/`-N`/`-Q`'s flags.
+pub fn put_flags(mut o: out.Out, s: List[byte], from: int, to: int, utf8: bool, flags: int) {
+    let quote = flags & 1 != 0
+    if flags & 2 != 0 {
+        if quote {
+            (mut o.buf).push(34 as byte)
+        }
+        out.bytes(mut o, s, from, to)
+        if quote {
+            (mut o.buf).push(34 as byte)
+        }
         return
     }
+    if !utf8 {
+        if quote {
+            (mut o.buf).push(34 as byte)
+        }
+        byte_branch(mut o, s, from, to, false, flags)
+        if quote {
+            (mut o.buf).push(34 as byte)
+        }
+        return
+    }
+    let qmark = flags & 4 != 0
     var ascii = true
     var i = from
     while i < to {
@@ -124,15 +191,23 @@ pub fn put(mut o: out.Out, s: List[byte], from: int, to: int, utf8: bool) {
         i += 1
     }
     if ascii {
+        if quote {
+            (mut o.buf).push(34 as byte)
+        }
         i = from
         while i < to {
             let c = s[i] as int
             if c >= 32 && c < 127 {
                 (mut o.buf).push(s[i])
+            } else if qmark {
+                (mut o.buf).push(63 as byte)
             } else {
                 octal(mut o, c)
             }
             i += 1
+        }
+        if quote {
+            (mut o.buf).push(34 as byte)
         }
         return
     }
@@ -142,28 +217,47 @@ pub fn put(mut o: out.Out, s: List[byte], from: int, to: int, utf8: bool) {
     while i < to {
         let (_, n) = decode(s, i, to)
         if n == 0 {
-            byte_branch(mut o, s, from, to)
+            if quote {
+                (mut o.buf).push(34 as byte)
+            }
+            byte_branch(mut o, s, from, to, true, flags)
+            if quote {
+                (mut o.buf).push(34 as byte)
+            }
             return
         }
         i += n
+    }
+    if quote {
+        (mut o.buf).push(34 as byte)
     }
     i = from
     while i < to {
         let (cp, n) = decode(s, i, to)
         if wprint(cp) {
             out.bytes(mut o, s, i, i + n)
+        } else if qmark {
+            (mut o.buf).push(63 as byte)
         } else {
             octal(mut o, cp)
         }
         i += n
     }
+    if quote {
+        (mut o.buf).push(34 as byte)
+    }
 }
 
 /// `put` for a `str` (a root path, a link target already decoded).
 pub fn put_str(mut o: out.Out, t: str, utf8: bool) {
+    put_str_flags(mut o, t, utf8, 0)
+}
+
+/// `put_flags` for a `str`.
+pub fn put_str_flags(mut o: out.Out, t: str, utf8: bool, flags: int) {
     var b = List[byte]()
     for x in t.bytes() {
         (mut b).push(x)
     }
-    put(mut o, b, 0, b.len, utf8)
+    put_flags(mut o, b, 0, b.len, utf8, flags)
 }
