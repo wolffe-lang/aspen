@@ -1,5 +1,7 @@
 //! The command line's rows: -L's number as tree reads it (strtoul, base
-//! 0, the int cast), the v1 flags, the refusals and the usage errors.
+//! 0, the int cast), the flags, --opt-toggle's flips, the value-taking
+//! long options and their missing-argument wordings, --threads' strict
+//! reading, the refusals and the usage errors.
 
 use opts
 
@@ -25,15 +27,79 @@ fn main() {
     assert(opts.level_int("0x") == 0, "0x with no digit is 0")
     let p = opts.parse(words("-a -L 2 -P *.c -I x --du -J dir1 dir2"), false)
     assert(p.stop == -1, "a v1 line parses")
-    assert(p.o.all && p.o.level == 2 && p.o.duflag && p.o.sizeflag && p.o.json, "the flags")
+    assert(
+        p.o.all && p.o.level == 2 && p.o.duflag && p.o.sizeflag && p.o.format == opts.out_json(),
+        "the flags",
+    )
     assert(p.o.patterns.len == 1 && p.o.ipatterns.len == 1, "the patterns")
     assert(p.roots.len == 2 && p.roots[1] == "dir2", "the roots")
     let g = opts.parse(words("-Pfoo -L3a"), false)
     assert(g.stop == -1 && g.o.patterns.len == 1 && g.o.level == 3 && g.o.all, "glued forms")
-    let r = opts.parse(words("-a -X"), false)
-    assert(r.stop == 2 && r.err.contains("-X"), "a v2 flag is refused by name")
-    let r2 = opts.parse(words("--filelimit=3"), false)
-    assert(r2.stop == 2 && r2.err.contains("--filelimit"), "a v2 long flag too")
+    let r = opts.parse(words("-a --acl"), false)
+    assert(r.stop == 2 && r.err.contains("--acl"), "--acl is refused by name")
+    let r1 = opts.parse(words("--asp-diff a b"), false)
+    assert(r1.stop == 2 && r1.err.contains("--asp-diff"), "--asp-diff too")
+    let r2 = opts.parse(words("--filelimit=3 -X"), false)
+    assert(r2.stop == -1 && r2.o.filelimit == 3 && r2.o.format == opts.out_xml(), "--filelimit=")
+    let r3 = opts.parse(words("--filelimit"), false)
+    assert(r3.stop == 1 && r3.err == "aspen: Missing argument to --filelimit\n", "no value")
+    let r4 = opts.parse(words("--compress="), false)
+    assert(r4.stop == 1 && r4.err == "aspen: Missing argument to --compress=\n", "an empty value")
+    let r5 = opts.parse(words("--charset"), false)
+    assert(
+        r5.stop == 1 &&
+            r5.err.starts_with(
+                "aspen: Missing argument to --charset\nValid charsets include:\n  ANSI\n",
+            ),
+        "--charset alone lists the charsets",
+    )
+    let r6 = opts.parse(words("--sort bogus"), false)
+    assert(
+        r6.stop == 1 &&
+            r6.out == "name,version,size,mtime,ctime,none\n" &&
+            r6.err == "aspen: Sort type 'bogus' not valid, should be one of: ",
+        "a bad --sort splits the streams",
+    )
+    let r7 = opts.parse(words("--sort=VERSION --compress -2"), false)
+    assert(
+        r7.stop == -1 &&
+            r7.o.sort == opts.sort_version() &&
+            r7.o.remove_space &&
+            r7.o.compress_indent == 1,
+        "--sort any case, --compress negative",
+    )
+    let r8 = opts.parse(words("--compress=9"), false)
+    assert(r8.o.noindent && r8.o.compress_indent == 0, "--compress past 3 is -i")
+    let t1 = opts.parse(words("-a --opt-toggle -a -s"), false)
+    assert(t1.stop == -1 && !t1.o.all && t1.o.sizeflag, "--opt-toggle flips a flag set before it")
+    let t2 = opts.parse(words("--opt-toggle --opt-toggle -a -a"), false)
+    assert(t2.o.all, "toggling twice sets again")
+    let h1 = opts.parse(words("-H -base -T Title"), false)
+    assert(
+        h1.o.format == opts.out_html() &&
+            h1.o.htmloffset &&
+            h1.o.host == "base" &&
+            h1.o.title == "Title",
+        "-H's leading dash",
+    )
+    let d1 = opts.parse(words("--filesfirst --dirsfirst"), false)
+    assert(d1.o.dirsfirst && !d1.o.filesfirst, "the last of dirsfirst and filesfirst wins")
+    let c1 = opts.parse(words("-c -S --si"), false)
+    assert(
+        c1.o.sort == opts.sort_ctime() && c1.o.ctimeflag && c1.o.charset == "IBM437" && c1.o.siflag,
+        "-c, -S, --si",
+    )
+    assert(opts.threads_value("8") == 8 && opts.threads_value("0") == 0, "--threads 8, 0")
+    assert(opts.threads_value("abc") == -1 && opts.threads_value("-1") == -1, "--threads junk")
+    assert(opts.threads_value("1x") == -1 && opts.threads_value("999999") == -1, "--threads range")
+    assert(opts.threads_value("") == -1, "--threads empty")
+    let th = opts.parse(words("--threads abc"), false)
+    assert(
+        th.stop == 1 && th.err.contains("Invalid --threads value 'abc'"),
+        "--threads refuses junk",
+    )
+    assert(opts.atol("  12x") == 12 && opts.atol("-3") == -3 && opts.atol("x") == 0, "atol")
+    assert(opts.atoi32("4294967297") == 1, "atoi keeps 32 bits")
     let bad = opts.parse(words("--bogus"), false)
     assert(
         bad.stop == 1 && bad.err.starts_with("aspen: Invalid argument `--bogus'."),

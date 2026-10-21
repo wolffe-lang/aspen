@@ -1,47 +1,141 @@
 //! opts — the option state and tree's command line (C aspen
 //! `src/options.c`, `src/options.h`).
 //!
-//! The parser recognizes tree 2.3.2's whole flag surface, so a valid tree
-//! flag never spuriously errors (`src/options.h:5`). v1 implements the
-//! flags ap00's contract names; every other one is refused BY NAME with
-//! exit 2 (`refuse`), where the C would have parsed it. Usage errors keep
-//! tree's wording and exit 1, as C aspen's do (`src/options.c:142`).
+//! The parser recognizes tree 2.3.2's whole flag surface (`src/options.h:5`)
+//! and C aspen's own `--threads`, with `--opt-toggle`'s flips and tree's
+//! wording and exit 1 for every usage error (`src/options.c:142`). Two of
+//! tree's linux options, `--acl` and `--selinux`, need the file's extended
+//! attributes, which wolf cannot read: they are refused BY NAME with exit
+//! 2 (`refuse`), as is C aspen's `--asp-diff`, until a ruling says
+//! otherwise (notes/ap01-the-second-light.md §9).
 
-/// The sort keys v1 knows (`src/options.h:14`'s SORT_NAME, SORT_MTIME).
+/// The sort keys (`src/options.h:14`).
 pub fn sort_name() -> int {
     0
 }
 
-/// `-t`'s sort (`SORT_MTIME`).
+/// `-v`, `--sort=version`.
+pub fn sort_version() -> int {
+    1
+}
+
+/// `--sort=size`: larger first.
+pub fn sort_size() -> int {
+    2
+}
+
+/// `-t`, `--sort=mtime`.
 pub fn sort_mtime() -> int {
     3
 }
 
-/// The parsed options v1 acts on (`src/options.h:25`'s, cut to v1).
+/// `-c`, `--sort=ctime`.
+pub fn sort_ctime() -> int {
+    4
+}
+
+/// `-U`, `--sort=none`: the host's order, and no `--dirsfirst`.
+pub fn sort_none() -> int {
+    5
+}
+
+/// The output formats (`src/options.h:23`).
+pub fn out_unix() -> int {
+    0
+}
+
+/// `-X`.
+pub fn out_xml() -> int {
+    1
+}
+
+/// `-J`.
+pub fn out_json() -> int {
+    2
+}
+
+/// `-H baseHREF`.
+pub fn out_html() -> int {
+    3
+}
+
+/// The parsed options (`src/options.h:25`). A string option that may be
+/// absent carries a `has_` flag beside it (the C's NULL).
 pub struct Opts {
     all: bool,
     dirsonly: bool,
     fullpath: bool,
+    noindent: bool,
+    xdev: bool,
+    follow: bool,
     classify: bool,
+    rerun: bool,
     level: int,
     sizeflag: bool,
     humanflag: bool,
+    siflag: bool,
     duflag: bool,
     permflag: bool,
+    userflag: bool,
+    groupflag: bool,
     dateflag: bool,
+    ctimeflag: bool,
+    inodeflag: bool,
+    devflag: bool,
+    timefmt: str,
+    has_timefmt: bool,
     ignorecase: bool,
     matchdirs: bool,
-    prune: bool,
-    noreport: bool,
+    quote: bool,
+    noprint: bool,
+    qmark: bool,
     patterns: List[List[byte]],
     ipatterns: List[List[byte]],
+    gitignore: bool,
+    gitfile: str,
+    has_gitfile: bool,
+    prune: bool,
+    showinfo: bool,
+    infofile: str,
+    has_infofile: bool,
+    filelimit: int,
+    metafirst: bool,
+    condense: bool,
+    compress_indent: int,
+    remove_space: bool,
     reverse: bool,
     dirsfirst: bool,
+    filesfirst: bool,
     sort: int,
+    charset: str,
+    has_charset: bool,
     ansilines: bool,
-    json: bool,
+    forcecolor: bool,
+    nocolor: bool,
+    noreport: bool,
+    hyperlink: bool,
+    scheme: str,
+    has_scheme: bool,
+    authority: str,
+    has_authority: bool,
+    format: int,
+    host: str,
+    has_host: bool,
+    title: str,
+    has_title: bool,
+    hintro: str,
+    has_hintro: bool,
+    houtro: str,
+    has_houtro: bool,
     outfile: str,
     has_outfile: bool,
+    nolinks: bool,
+    htmloffset: bool,
+    fromfile: bool,
+    fromtabfile: bool,
+    fflinks: bool,
+    threads: int,
+    colorize: bool,
 }
 
 /// What the command line asked for: the options and roots, or (`stop` >=
@@ -60,26 +154,77 @@ pub fn defaults() -> Opts {
         all: false,
         dirsonly: false,
         fullpath: false,
+        noindent: false,
+        xdev: false,
+        follow: false,
         classify: false,
+        rerun: false,
         level: -1,
         sizeflag: false,
         humanflag: false,
+        siflag: false,
         duflag: false,
         permflag: false,
+        userflag: false,
+        groupflag: false,
         dateflag: false,
+        ctimeflag: false,
+        inodeflag: false,
+        devflag: false,
+        timefmt: "",
+        has_timefmt: false,
         ignorecase: false,
         matchdirs: false,
-        prune: false,
-        noreport: false,
+        quote: false,
+        noprint: false,
+        qmark: false,
         patterns: List[List[byte]](),
         ipatterns: List[List[byte]](),
+        gitignore: false,
+        gitfile: "",
+        has_gitfile: false,
+        prune: false,
+        showinfo: false,
+        infofile: "",
+        has_infofile: false,
+        filelimit: 0,
+        metafirst: false,
+        condense: false,
+        compress_indent: 0,
+        remove_space: false,
         reverse: false,
         dirsfirst: false,
+        filesfirst: false,
         sort: 0,
+        charset: "",
+        has_charset: false,
         ansilines: false,
-        json: false,
+        forcecolor: false,
+        nocolor: false,
+        noreport: false,
+        hyperlink: false,
+        scheme: "",
+        has_scheme: false,
+        authority: "",
+        has_authority: false,
+        format: 0,
+        host: "",
+        has_host: false,
+        title: "",
+        has_title: false,
+        hintro: "",
+        has_hintro: false,
+        houtro: "",
+        has_houtro: false,
         outfile: "",
         has_outfile: false,
+        nolinks: false,
+        htmloffset: false,
+        fromfile: false,
+        fromtabfile: false,
+        fflinks: false,
+        threads: 0,
+        colorize: false,
     }
 }
 
@@ -206,14 +351,9 @@ fn stopped(o: Opts, status: int, out: str, err: str) -> Parsed {
     Parsed { o: copy o, roots: List[str](), stop: status, out: out, err: err }
 }
 
-/// The refusal of a tree flag v1 does not implement: by name, exit 2.
-fn refuse(o: Opts, flag: str) -> Parsed {
-    stopped(
-        o,
-        2,
-        "",
-        "aspen: {flag}: not implemented in aspen v1 (tree's option, ap01's to port)\n",
-    )
+/// The refusal of an option aspen does not carry: by name, exit 2.
+fn refuse(o: Opts, flag: str, why: str) -> Parsed {
+    stopped(o, 2, "", "aspen: {flag}: not implemented in aspen ({why})\n")
 }
 
 fn bytes_of(s: str) -> List[byte] {
@@ -299,53 +439,278 @@ fn hexval(c: int) -> int {
     -1
 }
 
-/// A long option tree knows and v1 does not: refused by name. The ones
-/// that take a value match as C aspen's `long_val` does (`--opt`,
-/// `--opt=value`; `src/options.c:189`).
-fn v2_long(a: str) -> str {
-    let plain = [
-        "--inodes",
-        "--device",
-        "--nolinks",
-        "--filesfirst",
-        "--si",
-        "--condense",
-        "--metafirst",
-        "--gitignore",
-        "--info",
-        "--fromfile",
-        "--fromtabfile",
-        "--fflinks",
-        "--hyperlink",
-        "--opt-toggle",
-        "--acl",
-        "--selinux",
-    ]
-    for p in plain {
-        if a == p {
-            return p
-        }
+/// C's `atol`/`atoi` as glibc answers them for the values a command
+/// line carries: leading white space, a sign, decimal digits, the rest
+/// ignored; no digits is 0. A value past `int`'s range saturates (the C
+/// is undefined there; glibc's `strtol` saturates, and `atoi` keeps the
+/// low 32 bits of that, which `atoi32` applies).
+pub fn atol(s: str) -> int {
+    let n = s.len
+    var i = 0
+    while i < n &&
+        (s.bytes()[i] as int == 32 || s.bytes()[i] as int >= 9 && s.bytes()[i] as int <= 13) {
+        i += 1
     }
-    let valued = [
-        "--compress",
-        "--charset",
-        "--filelimit",
-        "--threads",
-        "--timefmt",
-        "--sort",
-        "--gitfile",
-        "--infofile",
-        "--hintro",
-        "--houtro",
-        "--scheme",
-        "--authority",
-    ]
-    for p in valued {
-        if a == p || a.starts_with(p + "=") {
-            return p
-        }
+    var neg = false
+    if i < n && (s.bytes()[i] as int == 43 || s.bytes()[i] as int == 45) {
+        neg = s.bytes()[i] as int == 45
+        i += 1
     }
-    ""
+    let cap: int = 922337203685477580
+    var v: int = 0
+    var over = false
+    while i < n && s.bytes()[i] as int >= 48 && s.bytes()[i] as int <= 57 {
+        let d = s.bytes()[i] as int - 48
+        if v > cap || v == cap && d > 7 {
+            over = true
+        } else if !over {
+            v = v * 10 + d
+        }
+        i += 1
+    }
+    if over {
+        return if neg then -9223372036854775807 - 1 else 9223372036854775807
+    }
+    if neg then -v else v
+}
+
+/// `atoi`: `atol` cut to the low 32 bits, read signed.
+pub fn atoi32(s: str) -> int {
+    let v = atol(s)
+    let lim: int = 4294967296
+    let half: int = 2147483648
+    var low = v % lim
+    if low < 0 {
+        low += lim
+    }
+    if low >= half then low - lim else low
+}
+
+/// A long option's value (`src/options.c:189`'s `long_val`): `--opt=V`
+/// is V, `--opt` takes the next word; `matched` is false for a longer
+/// option that only shares the prefix. `fail` >= 0 is a usage error.
+struct LongVal {
+    matched: bool,
+    value: str,
+    next: int,
+    fail: int,
+    err: str,
+}
+
+fn long_val(a: str, pfx: str, i: int, args: List[str]) -> LongVal {
+    let n = pfx.len
+    if !a.starts_with(pfx) {
+        return LongVal { matched: false, value: "", next: i, fail: -1, err: "" }
+    }
+    if a.len > n && a.bytes()[n] as int == 61 {
+        if a.len == n + 1 {
+            return LongVal {
+                matched: true,
+                value: "",
+                next: i,
+                fail: 1,
+                err: "aspen: Missing argument to {pfx}=\n",
+            }
+        }
+        return LongVal { matched: true, value: a[n + 1..], next: i, fail: -1, err: "" }
+    }
+    if a.len == n {
+        if i + 1 >= args.len {
+            var e = "aspen: Missing argument to {pfx}\n"
+            if pfx == "--charset" {
+                e += lines_list()
+            }
+            return LongVal { matched: true, value: "", next: i, fail: 1, err: e }
+        }
+        return LongVal { matched: true, value: args[i + 1], next: i + 1, fail: -1, err: "" }
+    }
+    LongVal { matched: false, value: "", next: i, fail: -1, err: "" }
+}
+
+/// tree's charset list for `--charset` without a value (`src/charset.c:113`):
+/// the table's names in order, two spaces in.
+fn lines_list() -> str {
+    var t = "Valid charsets include:\n"
+    for n in charset_names() {
+        t += "  {n}\n"
+    }
+    t
+}
+
+/// Every name of tree 2.3.2's charset table, row by row
+/// (`src/charset.c:7`; "windows-1256" twice, as tree lists it).
+pub fn charset_names() -> List[str] {
+    [
+        "ANSI",
+        "ISO-8859-1",
+        "ISO-8859-1:1987",
+        "ISO_8859-1",
+        "latin1",
+        "l1",
+        "IBM819",
+        "CP819",
+        "csISOLatin1",
+        "ISO-8859-3",
+        "ISO_8859-3:1988",
+        "ISO_8859-3",
+        "latin3",
+        "ls",
+        "csISOLatin3",
+        "ISO-8859-7",
+        "ISO_8859-7:1987",
+        "ISO_8859-7",
+        "ELOT_928",
+        "ECMA-118",
+        "greek",
+        "greek8",
+        "csISOLatinGreek",
+        "ISO-8859-8",
+        "ISO_8859-8:1988",
+        "iso-ir-138",
+        "ISO_8859-8",
+        "hebrew",
+        "csISOLatinHebrew",
+        "ISO-8859-9",
+        "ISO_8859-9:1989",
+        "iso-ir-148",
+        "ISO_8859-9",
+        "latin5",
+        "l5",
+        "csISOLatin5",
+        "Shift_JIS",
+        "MS_Kanji",
+        "csShiftJIS",
+        "EUC-JP",
+        "Extended_UNIX_Code_Packed_Format_for_Japanese",
+        "csEUCPkdFmtJapanese",
+        "EUC-KR",
+        "csEUCKR",
+        "ISO-2022-JP",
+        "csISO2022JP",
+        "ISO-2022-JP-2",
+        "csISO2022JP2",
+        "IBM437",
+        "cp437",
+        "437",
+        "csPC8CodePage437",
+        "IBM852",
+        "cp852",
+        "852",
+        "csPCp852",
+        "IBM863",
+        "cp863",
+        "863",
+        "csIBM863",
+        "IBM855",
+        "cp855",
+        "855",
+        "csIBM855",
+        "IBM865",
+        "cp865",
+        "865",
+        "csIBM865",
+        "IBM866",
+        "cp866",
+        "866",
+        "csIBM866",
+        "IBM850",
+        "cp850",
+        "850",
+        "csPC850Multilingual",
+        "IBM00858",
+        "CCSID00858",
+        "CP00858",
+        "PC-Multilingual-850+euro",
+        "IBM869",
+        "cp869",
+        "869",
+        "cp-gr",
+        "csIBM869",
+        "GB2312",
+        "csGB2312",
+        "UTF-8",
+        "utf8",
+        "Big5",
+        "csBig5",
+        "VISCII",
+        "csVISCII",
+        "KOI8-R",
+        "csKOI8R",
+        "KOI8-U",
+        "ISO-8859-1-Windows-3.1-Latin-1",
+        "csWindows31Latin1",
+        "ISO-8859-2-Windows-Latin-2",
+        "csWindows31Latin2",
+        "windows-1250",
+        "windows-1251",
+        "windows-1253",
+        "windows-1254",
+        "windows-1255",
+        "windows-1256",
+        "windows-1256",
+        "windows-1257",
+    ]
+}
+
+/// `--sort`'s names, any case (`src/options.c:221`); -1 for none.
+fn sort_of(name: str) -> int {
+    let n = name.lower()
+    if n == "name" {
+        return 0
+    }
+    if n == "version" {
+        return 1
+    }
+    if n == "size" {
+        return 2
+    }
+    if n == "mtime" {
+        return 3
+    }
+    if n == "ctime" {
+        return 4
+    }
+    if n == "none" {
+        return 5
+    }
+    -1
+}
+
+/// `--threads`' strict reading (`src/options.c:291`): decimal digits
+/// with an optional sign, 0..65535, nothing after; -1 when it is not.
+pub fn threads_value(v: str) -> int {
+    let n = v.len
+    if n == 0 {
+        return -1
+    }
+    var i = 0
+    var neg = false
+    if v.bytes()[0] as int == 43 || v.bytes()[0] as int == 45 {
+        neg = v.bytes()[0] as int == 45
+        i = 1
+    }
+    if i >= n {
+        return -1
+    }
+    var t: int = 0
+    while i < n {
+        let c = v.bytes()[i] as int
+        if c < 48 || c > 57 {
+            return -1
+        }
+        if t <= 65535 {
+            t = t * 10 + (c - 48)
+        }
+        i += 1
+    }
+    if neg && t != 0 || t > 65535 {
+        return -1
+    }
+    t
+}
+
+fn tog(cur: bool, toggle: bool) -> bool {
+    if toggle then !cur else true
 }
 
 /// Parse `args` (argv without the program name) as tree does
@@ -355,6 +720,7 @@ pub fn parse(args: List[str], macos: bool) -> Parsed {
     var o = defaults()
     var roots = List[str]()
     var optf = true
+    var toggle = false
     var i = 0
     let argc = args.len
     while i < argc {
@@ -373,25 +739,83 @@ pub fn parse(args: List[str], macos: bool) -> Parsed {
                 if a == "--version" {
                     return stopped(o, 0, "aspen v{version()}\n", "")
                 }
-                if a == "--noreport" {
-                    o.noreport = true
+                if a == "--inodes" {
+                    o.inodeflag = tog(o.inodeflag, toggle)
+                } else if a == "--device" {
+                    o.devflag = tog(o.devflag, toggle)
+                } else if a == "--noreport" {
+                    o.noreport = tog(o.noreport, toggle)
+                } else if a == "--nolinks" {
+                    o.nolinks = tog(o.nolinks, toggle)
                 } else if a == "--dirsfirst" {
                     o.dirsfirst = true
+                    o.filesfirst = false
+                } else if a == "--filesfirst" {
+                    o.filesfirst = true
+                    o.dirsfirst = false
+                } else if a == "--si" {
+                    o.siflag = true
+                    o.humanflag = true
+                    o.sizeflag = true
                 } else if a == "--du" {
                     o.duflag = true
                     o.sizeflag = true
                 } else if a == "--prune" {
-                    o.prune = true
+                    o.prune = tog(o.prune, toggle)
                 } else if a == "--ignore-case" {
-                    o.ignorecase = true
+                    o.ignorecase = tog(o.ignorecase, toggle)
                 } else if a == "--matchdirs" {
-                    o.matchdirs = true
+                    o.matchdirs = tog(o.matchdirs, toggle)
+                } else if a == "--condense" {
+                    o.condense = tog(o.condense, toggle)
+                } else if a == "--metafirst" {
+                    o.metafirst = tog(o.metafirst, toggle)
+                } else if a == "--gitignore" {
+                    o.gitignore = tog(o.gitignore, toggle)
+                } else if a == "--info" {
+                    o.showinfo = tog(o.showinfo, toggle)
+                } else if a == "--fromfile" {
+                    o.fromfile = true
+                } else if a == "--fromtabfile" {
+                    o.fromtabfile = true
+                } else if a == "--fflinks" {
+                    o.fflinks = tog(o.fflinks, toggle)
+                } else if a == "--hyperlink" {
+                    o.hyperlink = tog(o.hyperlink, toggle)
+                } else if a == "--opt-toggle" {
+                    toggle = !toggle
+                } else if a == "--acl" || a == "--selinux" {
+                    return refuse(
+                        o,
+                        a,
+                        "tree's option: it reads extended attributes, which wolf has no call for",
+                    )
+                } else if a == "--asp-diff" {
+                    return refuse(
+                        o,
+                        a,
+                        "C aspen's own extension; a ruling decides whether it is carried",
+                    )
                 } else {
-                    let v2 = v2_long(a)
-                    if v2.len > 0 {
-                        return refuse(o, v2)
+                    let r = parse_valued(mut o, a, i, args)
+                    if r.fail >= 0 {
+                        return Parsed {
+                            o: copy o,
+                            roots: List[str](),
+                            stop: r.fail,
+                            out: r.out,
+                            err: r.err,
+                        }
                     }
-                    return stopped(o, 1, "", "aspen: Invalid argument `{a}'.\n" + synopsis(macos))
+                    if !r.matched {
+                        return stopped(
+                            o,
+                            1,
+                            "",
+                            "aspen: Invalid argument `{a}'.\n" + synopsis(macos),
+                        )
+                    }
+                    i = r.next
                 }
                 i += 1
                 continue
@@ -401,48 +825,91 @@ pub fn parse(args: List[str], macos: bool) -> Parsed {
             while j < n {
                 let ch = ab[j] as int
                 if ch == 97 {
-                    o.all = true
+                    o.all = tog(o.all, toggle)
                 } else if ch == 100 {
-                    o.dirsonly = true
+                    o.dirsonly = tog(o.dirsonly, toggle)
                 } else if ch == 102 {
-                    o.fullpath = true
+                    o.fullpath = tog(o.fullpath, toggle)
+                } else if ch == 105 {
+                    o.noindent = tog(o.noindent, toggle)
+                } else if ch == 120 {
+                    o.xdev = tog(o.xdev, toggle)
+                } else if ch == 108 {
+                    o.follow = tog(o.follow, toggle)
+                } else if ch == 82 {
+                    o.rerun = tog(o.rerun, toggle)
                 } else if ch == 70 {
-                    o.classify = true
+                    o.classify = tog(o.classify, toggle)
                 } else if ch == 115 {
-                    o.sizeflag = true
+                    o.sizeflag = tog(o.sizeflag, toggle)
                 } else if ch == 104 {
-                    o.humanflag = true
-                    o.sizeflag = true
+                    o.humanflag = tog(o.humanflag, toggle)
+                    o.sizeflag = o.humanflag
+                } else if ch == 117 {
+                    o.userflag = tog(o.userflag, toggle)
+                } else if ch == 103 {
+                    o.groupflag = tog(o.groupflag, toggle)
                 } else if ch == 112 {
-                    o.permflag = true
+                    o.permflag = tog(o.permflag, toggle)
                 } else if ch == 68 {
-                    o.dateflag = true
+                    o.dateflag = tog(o.dateflag, toggle)
+                } else if ch == 113 {
+                    o.qmark = tog(o.qmark, toggle)
+                } else if ch == 78 {
+                    o.noprint = tog(o.noprint, toggle)
+                } else if ch == 81 {
+                    o.quote = tog(o.quote, toggle)
+                } else if ch == 67 {
+                    o.forcecolor = tog(o.forcecolor, toggle)
                 } else if ch == 110 {
-                    // -n: colour off; v1 never colours, so it is always off
+                    o.nocolor = tog(o.nocolor, toggle)
                 } else if ch == 65 {
-                    o.ansilines = true
+                    o.ansilines = tog(o.ansilines, toggle)
+                } else if ch == 83 {
+                    o.charset = "IBM437"
+                    o.has_charset = true
                 } else if ch == 116 {
                     o.sort = sort_mtime()
+                } else if ch == 99 {
+                    o.sort = sort_ctime()
+                    o.ctimeflag = true
                 } else if ch == 114 {
-                    o.reverse = true
+                    o.reverse = tog(o.reverse, toggle)
+                } else if ch == 118 {
+                    o.sort = sort_version()
+                } else if ch == 85 {
+                    o.sort = sort_none()
+                } else if ch == 88 {
+                    o.format = out_xml()
                 } else if ch == 74 {
-                    o.json = true
-                } else if ch == 80 || ch == 73 || ch == 111 {
-                    // -P/-I/-o take the glued remainder or the next word
-                    // (DEVIATION D5, `src/options.c:166`)
+                    o.format = out_json()
+                } else if ch == 72 || ch == 84 || ch == 111 || ch == 80 || ch == 73 {
+                    // -H/-T/-o/-P/-I take the glued remainder or the next
+                    // word (DEVIATION D5, `src/options.c:166`)
                     var v = ""
                     if j + 1 < n {
                         v = a[j + 1..]
                     } else {
                         if i + 1 >= argc {
-                            let what = if ch == 80 then "-P" else if ch == 73 then "-I" else "-o"
+                            let what = "-" + a[j..j + 1]
                             return stopped(o, 1, "", "aspen: Missing argument to {what} option.\n")
                         }
                         i += 1
                         v = args[i]
                     }
                     j = n - 1
-                    if ch == 80 {
+                    if ch == 72 {
+                        o.format = out_html()
+                        if v.starts_with("-") {
+                            o.htmloffset = true
+                            v = v[1..]
+                        }
+                        o.host = v
+                        o.has_host = true
+                    } else if ch == 84 {
+                        o.title = v
+                        o.has_title = true
+                    } else if ch == 80 {
                         (mut o.patterns).push(bytes_of(v))
                     } else if ch == 73 {
                         (mut o.ipatterns).push(bytes_of(v))
@@ -472,8 +939,6 @@ pub fn parse(args: List[str], macos: bool) -> Parsed {
                         return stopped(o, 1, "", "aspen: Invalid level, must be greater than 0.\n")
                     }
                     o.level = lvl + 1
-                } else if is_v2_short(ch) {
-                    return refuse(o, "-" + a[j..j + 1])
                 } else {
                     let c1 = a.get(j..j + 1) else "?"
                     return stopped(o, 1, "", "aspen: Invalid argument -`{c1}'.\n" + synopsis(macos))
@@ -488,24 +953,118 @@ pub fn parse(args: List[str], macos: bool) -> Parsed {
     Parsed { o: o, roots: roots, stop: -1, out: "", err: "" }
 }
 
-/// tree's short flags v1 does not implement (`src/options.c:338`):
-/// i x l R u g q N Q C S c v U X H T.
-fn is_v2_short(ch: int) -> bool {
-    ch == 105 ||
-        ch == 120 ||
-        ch == 108 ||
-        ch == 82 ||
-        ch == 117 ||
-        ch == 103 ||
-        ch == 113 ||
-        ch == 78 ||
-        ch == 81 ||
-        ch == 67 ||
-        ch == 83 ||
-        ch == 99 ||
-        ch == 118 ||
-        ch == 85 ||
-        ch == 88 ||
-        ch == 72 ||
-        ch == 84
+/// The answer of the value-taking long options.
+struct Valued {
+    matched: bool,
+    next: int,
+    fail: int,
+    out: str,
+    err: str,
+}
+
+fn vfail(lv: LongVal) -> Valued {
+    Valued { matched: true, next: lv.next, fail: lv.fail, out: "", err: lv.err }
+}
+
+/// The long options that take a value (`src/options.c:270`), in C
+/// aspen's order.
+fn parse_valued(mut o: Opts, a: str, i: int, args: List[str]) -> Valued {
+    let names = [
+        "--compress",
+        "--charset",
+        "--filelimit",
+        "--threads",
+        "--timefmt",
+        "--sort",
+        "--gitfile",
+        "--infofile",
+        "--hintro",
+        "--houtro",
+        "--scheme",
+        "--authority",
+    ]
+    for pfx in names {
+        let lv = long_val(a, pfx, i, args)
+        if !lv.matched {
+            continue
+        }
+        if lv.fail >= 0 {
+            return vfail(lv)
+        }
+        let v = lv.value
+        if pfx == "--compress" {
+            // tree's clamp: negative drops the space after a connector, past
+            // 3 is -i, then one less indexes the three widths
+            var ci = atoi32(v)
+            o.remove_space = ci < 0
+            if ci < 0 {
+                ci = -ci
+            }
+            if ci > 3 {
+                ci = 0
+                o.noindent = true
+            }
+            if ci > 0 {
+                ci -= 1
+            }
+            o.compress_indent = ci
+        } else if pfx == "--charset" {
+            o.charset = v
+            o.has_charset = true
+        } else if pfx == "--filelimit" {
+            o.filelimit = atol(v)
+        } else if pfx == "--threads" {
+            let t = threads_value(v)
+            if t < 0 {
+                return Valued {
+                    matched: true,
+                    next: lv.next,
+                    fail: 1,
+                    out: "",
+                    err: "aspen: Invalid --threads value '{v}' (expected 0..65535).\n",
+                }
+            }
+            o.threads = t
+        } else if pfx == "--timefmt" {
+            o.timefmt = v
+            o.has_timefmt = true
+            o.dateflag = true
+        } else if pfx == "--sort" {
+            let k = sort_of(v)
+            if k < 0 {
+                // tree splits the streams (`src/options.c:228`): the prefix
+                // without a newline on stderr, the list on stdout
+                return Valued {
+                    matched: true,
+                    next: lv.next,
+                    fail: 1,
+                    out: "name,version,size,mtime,ctime,none\n",
+                    err: "aspen: Sort type '{v}' not valid, should be one of: ",
+                }
+            }
+            o.sort = k
+        } else if pfx == "--gitfile" {
+            o.gitignore = true
+            o.gitfile = v
+            o.has_gitfile = true
+        } else if pfx == "--infofile" {
+            o.showinfo = true
+            o.infofile = v
+            o.has_infofile = true
+        } else if pfx == "--hintro" {
+            o.hintro = v
+            o.has_hintro = true
+        } else if pfx == "--houtro" {
+            o.houtro = v
+            o.has_houtro = true
+        } else if pfx == "--scheme" {
+            o.scheme = v
+            o.has_scheme = true
+        } else {
+            o.authority = v
+            o.has_authority = true
+        }
+        return Valued { matched: true, next: lv.next, fail: -1, out: "", err: "" }
+    }
+    Valued { matched: false, next: i, fail: -1, out: "", err: "" }
 }
