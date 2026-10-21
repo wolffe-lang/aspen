@@ -1,0 +1,13 @@
+# aspen.pin — the C aspen this port follows and whose golden suite is the
+# oracle of record (ruling #103: a port of tenseleyFlow/aspen, MIT, the
+# maintainer's, itself written with tree 2.3.2 as reference).
+#
+# `tools/fetch-c-aspen` fetches exactly this commit into `.oracle/c-aspen`
+# (gitignored) and refuses another; the golden scripts there are run as
+# they are and never edited (`git status` must stay clean).
+#
+# 944a398: 174 commits, every one mfwolffe <mfwolffe@outlook.com>
+# (`git shortlog -sn --all`, read 2026-10-21).
+[c-aspen]
+repo = "tenseleyFlow/aspen"
+rev = "944a39821549ef674ca8f0369b31b5bb6c5620b3"

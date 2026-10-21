@@ -1,0 +1,40 @@
+#!/bin/sh
+# fetch-c-aspen — the C aspen at aspen.pin into .oracle/c-aspen (or DIR).
+#
+#   tools/fetch-c-aspen [DIR]
+#
+# The commit is fetched by its hash and refused unless HEAD is the pin;
+# a checkout already at the pin with a clean tree is left alone. The
+# golden suite there is the oracle of record and is never edited: a dirty
+# tracked file is a refusal, not something this tool repairs.
+set -eu
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+cd "$ASPEN_ROOT"
+pin_val() {
+    awk -v k="$1" '$1 == k { sub(/^[^=]*= */, ""); gsub(/"/, ""); print; exit }' aspen.pin
+}
+repo=$(pin_val repo)
+rev=$(pin_val rev)
+dir=${1:-.oracle/c-aspen}
+if [ -d "$dir/.git" ] && [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$rev" ]; then
+    if [ -n "$(git -C "$dir" status --porcelain --untracked-files=no)" ]; then
+        echo "fetch-c-aspen: REFUSED — $dir has edited tracked files; the goldens are never edited" >&2
+        git -C "$dir" status --short --untracked-files=no >&2
+        exit 1
+    fi
+    echo "fetch-c-aspen: $dir already at $rev"
+    exit 0
+fi
+rm -rf "$dir"
+mkdir -p "$dir"
+git init -q "$dir"
+url=${ASPEN_C_URL:-https://github.com/$repo}
+echo "fetch-c-aspen: $url at $rev"
+git -C "$dir" fetch -q --depth 1 "$url" "$rev"
+git -C "$dir" checkout -q --detach FETCH_HEAD
+have=$(git -C "$dir" rev-parse HEAD)
+if [ "$have" != "$rev" ]; then
+    echo "fetch-c-aspen: REFUSED — fetched $have, the pin is $rev" >&2
+    exit 1
+fi
+echo "fetch-c-aspen: $dir at $have"
