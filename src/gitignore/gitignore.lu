@@ -1,0 +1,194 @@
+//! gitignore — `--gitignore` and `--gitfile` (C aspen `src/filter.c`,
+//! tree's filter.c): a stack of loaded ignore files, pushed per
+//! directory on the way down and popped on the way up. An entry is
+//! filtered when a remove pattern matches it and no `!` pattern does. A
+//! relative pattern (no `/`, or only a trailing one) matches the name at
+//! any level; an absolute one matches the path, relative to the ignore
+//! file's directory. The match is glob's, exact (1; a syntax error is
+//! not a match here, unlike `-P`'s, `src/filter.c:157`).
+
+use glob
+
+/// One pattern: its bytes (a leading `/` stripped) and whether it is
+/// relative.
+pub struct Pat {
+    pat: List[byte],
+    relative: bool,
+}
+
+/// One loaded ignore file: the directory its patterns are relative to,
+/// its remove and its `!` patterns.
+pub struct Ignore {
+    base: List[byte],
+    remove: List[Pat],
+    reverse: List[Pat],
+}
+
+/// The lines `fgets` with a `PATH_MAX` (4,096) buffer reads: each ends
+/// at its newline, or after 4,095 bytes (a longer line is read as
+/// several).
+pub fn lines(b: List[byte]) -> List[List[byte]] {
+    var out = List[List[byte]]()
+    var cur = List[byte]()
+    for x in b {
+        (mut cur).push(x)
+        if x as int == 10 || cur.len == 4095 {
+            (mut out).push(cur)
+            cur = List[byte]()
+        }
+    }
+    if cur.len > 0 {
+        (mut out).push(cur)
+    }
+    out
+}
+
+/// tree's gittrim (`src/filter.c:13`): the line end dropped, then the
+/// trailing spaces no backslash escapes, then every backslash escape
+/// undone (a lone trailing backslash kept: C aspen's guard).
+pub fn trim(s: List[byte]) -> List[byte] {
+    var e = s.len - 1
+    if e < 0 {
+        return List[byte]()
+    }
+    while e > 0 && (s[e] as int == 10 || s[e] as int == 13) {
+        e -= 1
+    }
+    var i = e
+    while i >= 0 {
+        if s[i] as int != 32 {
+            break
+        }
+        if i > 0 && s[i - 1] as int != 92 {
+            e -= 1
+        }
+        i -= 1
+    }
+    var out = List[byte]()
+    i = 0
+    let end = e + 1
+    while i < end {
+        if s[i] as int == 92 && i + 1 < end {
+            i += 1
+        }
+        (mut out).push(s[i])
+        i += 1
+    }
+    out
+}
+
+/// A pattern from a trimmed line (`src/filter.c:43`).
+pub fn new_pat(line: List[byte], from: int) -> Pat {
+    var slash = -1
+    var i = from
+    while i < line.len {
+        if line[i] as int == 47 {
+            slash = i
+            break
+        }
+        i += 1
+    }
+    let off = if from < line.len && line[from] as int == 47 then from + 1 else from
+    Pat { pat: line[off..line.len], relative: slash < 0 || slash + 1 >= line.len }
+}
+
+fn parse(take base: List[byte], text: List[byte]) -> Ignore {
+    var ig = Ignore { base: base, remove: List[Pat](), reverse: List[Pat]() }
+    for raw in lines(text) {
+        if raw.len > 0 && raw[0] as int == 35 {
+            continue
+        }
+        let rev = raw.len > 0 && raw[0] as int == 33
+        let t = trim(raw)
+        if t.len == 0 {
+            continue
+        }
+        let p = new_pat(t, if rev then 1 else 0)
+        if rev {
+            (mut ig.reverse).push(p)
+        } else {
+            (mut ig.remove).push(p)
+        }
+    }
+    ig
+}
+
+fn bytes_of(s: str) -> List[byte] {
+    var b = List[byte]()
+    for x in s.bytes() {
+        (mut b).push(x)
+    }
+    b
+}
+
+/// `<dir>/.gitignore`, when it is a regular file (`src/filter.c:80`).
+pub fn load_dir(dir: str) -> (bool, Ignore) {
+    let f = "{dir}/.gitignore"
+    let empty = Ignore { base: List[byte](), remove: List[Pat](), reverse: List[Pat]() }
+    let st = fs_stat(f) else |_| {
+        return (false, empty)
+    }
+    if st[0] != 0 {
+        return (false, empty)
+    }
+    let text = fs_read_bytes(f) else |_| {
+        return (false, empty)
+    }
+    (true, parse(take bytes_of(dir), text))
+}
+
+/// An explicit ignore file whose patterns are relative to `base`
+/// (`--gitfile`, `$GIT_DIR/info/exclude`).
+pub fn load_file(base: str, file: str) -> (bool, Ignore) {
+    let empty = Ignore { base: List[byte](), remove: List[Pat](), reverse: List[Pat]() }
+    let text = fs_read_bytes(file) else |_| {
+        return (false, empty)
+    }
+    (true, parse(take bytes_of(base), text))
+}
+
+fn matches(p: Pat, path: List[byte], nfrom: int, isdir: bool, ic: bool, base: List[byte]) -> bool {
+    if p.relative {
+        return glob.patmatch(path, nfrom, path.len, p.pat, 0, p.pat.len, isdir, ic) == 1
+    }
+    var full = copy base
+    (mut full).push(47 as byte)
+    for x in p.pat {
+        (mut full).push(x)
+    }
+    glob.patmatch(path, 0, path.len, full, 0, full.len, isdir, ic) == 1
+}
+
+/// Whether the entry at `path` (its name from `nfrom`) is ignored
+/// (`src/filter.c:166`); the stack's newest file is its last.
+pub fn filtered(stack: List[Ignore], path: List[byte], nfrom: int, isdir: bool, ic: bool) -> bool {
+    var filter = false
+    var k = stack.len - 1
+    while !filter && k >= 0 {
+        for p in stack[k].remove {
+            if matches(p, path, nfrom, isdir, ic, stack[k].base) {
+                filter = true
+                break
+            }
+        }
+        k -= 1
+    }
+    if !filter {
+        return false
+    }
+    k = stack.len - 1
+    while k >= 0 {
+        for p in stack[k].reverse {
+            if matches(p, path, nfrom, isdir, ic, stack[k].base) {
+                return false
+            }
+        }
+        k -= 1
+    }
+    true
+}
+
+/// An ignore file with no patterns.
+pub fn empty() -> Ignore {
+    Ignore { base: List[byte](), remove: List[Pat](), reverse: List[Pat]() }
+}
