@@ -1,0 +1,69 @@
+//! out — a buffered writer in front of a descriptor: C aspen's dstr plus
+//! `render/outbuf.c` (drain in 64 KiB batches, never a write per line).
+//! A `print` is one `write(2)` in wolf, so every byte aspen prints goes
+//! through here.
+
+/// A buffer in front of descriptor `fd` (1, 2, or the `-o FILE` one).
+pub struct Out {
+    fd: int,
+    buf: List[byte],
+}
+
+/// An empty buffer in front of `fd`.
+pub fn to_fd(fd: int) -> Out {
+    Out { fd: fd, buf: List[byte]() }
+}
+
+/// Write what is buffered (`src/render/outbuf.c:6`). A failed write is
+/// dropped, as the C's: there is nothing graceful to do mid-tree.
+pub fn flush(mut o: Out) {
+    if o.buf.len > 0 {
+        fs_write_chunk(o.fd, o.buf) else |_| {}
+        o.buf = List[byte]()
+    }
+}
+
+/// Flush once the buffer reaches the drain threshold
+/// (`src/render/outbuf.c:21`, `ASP_OUT_FLUSH`).
+pub fn maybe(mut o: Out) {
+    if o.buf.len >= 65536 {
+        flush(mut o)
+    }
+}
+
+/// Append the bytes of `t`.
+pub fn s(mut o: Out, t: str) {
+    for b in t.bytes() {
+        (mut o.buf).push(b)
+    }
+}
+
+/// Append the byte `b` (0..255).
+pub fn c(mut o: Out, b: int) {
+    (mut o.buf).push(b as byte)
+}
+
+/// Bytes `b[from..to]`.
+pub fn bytes(mut o: Out, b: List[byte], from: int, to: int) {
+    var i = from
+    while i < to {
+        (mut o.buf).push(b[i])
+        i += 1
+    }
+}
+
+/// `n` in decimal.
+pub fn num(mut o: Out, n: int) {
+    s(mut o, "{n}")
+}
+
+/// `n` right-aligned in `width` columns (printf's `%Nd`/`%Nlld`).
+pub fn num_width(mut o: Out, n: int, width: int) {
+    let t = "{n}"
+    var pad = width - t.len
+    while pad > 0 {
+        (mut o.buf).push(32 as byte)
+        pad -= 1
+    }
+    s(mut o, t)
+}

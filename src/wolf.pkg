@@ -1,0 +1,15 @@
+// wolf.pkg — the aspen manifest, beside the entry `wolf build` is given
+// (`src/aspen.lu`), so it governs the real build (lope's shape).
+// Zero dependencies but wolf-std (the track's rule 3).
+//
+// THE CAPABILITIES are what aspen's own code reaches:
+//   env  — its arguments, `LC_ALL`/`LC_CTYPE`/`LC_COLLATE`/`LANG`,
+//          `TREE_CHARSET`, `TZ`, the clock;
+//   fs   — the directories it lists, `lstat`/`stat`/`readlink` on their
+//          entries, `-o FILE`, the zone file for `-D`.
+pkg {
+    name: "aspen",
+    version: "0.1.0",
+    edition: "1",
+    capabilities: [env, fs],
+}
