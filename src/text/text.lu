@@ -1,11 +1,13 @@
 //! text — the default listing (C aspen `src/render/unix.c`): indentation
-//! lines, the metadata column, the name (or `-f`'s full path), `-F`'s
-//! suffix, a link's ` -> target`, the error blurbs, the report line.
-//! Colour, `--hyperlink`, `--metafirst`, `-i`, `--compress` and `--info`
-//! comments are ap01's.
+//! lines at `--compress`'s width (or none, `-i`), the metadata column
+//! (before the indentation under `--metafirst`), OSC 8 hyperlinks
+//! (`--hyperlink`), colour, the name (or `-f`'s full path) as `-q`/`-N`/
+//! `-Q` print it, `-F`'s suffix, a link's ` -> target`, the error
+//! blurbs, `--info`'s comment lines, the report line.
 
-use clock
+use color
 use ent
+use host
 use info
 use lines
 use name
@@ -13,8 +15,9 @@ use opts
 use out
 
 /// The text renderer's state: its writer, the locale's UTF-8-ness, the
-/// line set, which ancestors were last at their depth, and the zone and
-/// clock for `-D`.
+/// line set and the active width's glyphs, which ancestors were last at
+/// their depth, the columns, the colours, the name flags, and the OSC 8
+/// link's parts.
 pub struct Text {
     o: out.Out,
     utf8: bool,
@@ -22,17 +25,62 @@ pub struct Text {
     last: List[bool],
     pre: List[byte],
     pre_at: List[int],
-    corner: List[byte],
+    vert: List[byte],
     vleft: List[byte],
-    zone: clock.Zone,
-    now: int,
+    corner: List[byte],
+    space: List[byte],
+    gap: bool,
+    cols: info.Cols,
+    colors: color.Colors,
+    np: int,
+    hyper: bool,
+    scheme: str,
+    authority: str,
+    realbase: str,
+    pathoffset: int,
     debug: bool,
 }
 
-/// A renderer writing to descriptor `fd`.
-pub fn new(fd: int, utf8: bool, take ln: lines.Lines, take zone: clock.Zone, now: int) -> Text {
-    let corner = copy ln.corner
-    let vleft = copy ln.vleft
+fn bs(s: str) -> List[byte] {
+    var b = List[byte]()
+    for x in s.bytes() {
+        (mut b).push(x)
+    }
+    b
+}
+
+/// A renderer writing to descriptor `fd` (`unix_ctx_init`,
+/// `src/render/unix.c:19`).
+pub fn new(
+    fd: int,
+    o: opts.Opts,
+    utf8: bool,
+    take ln: lines.Lines,
+    take cols: info.Cols,
+    take colors: color.Colors,
+) -> Text {
+    let cl = o.compress_indent
+    let vert = copy ln.vert[cl]
+    let vleft = copy ln.vleft[cl]
+    let corner = copy ln.corner[cl]
+    let spaces = ["   ", "  ", " "]
+    var scheme = "file://"
+    var authority = ""
+    if o.hyperlink {
+        // tree honours --scheme only when it holds a ':' (its other branch
+        // never assigns it; `src/render/unix.c:47`)
+        if o.has_scheme && o.scheme.contains(":") {
+            scheme = o.scheme
+        }
+        if o.has_authority {
+            authority = if o.authority == "." then "" else o.authority
+        } else {
+            authority = host.name()
+        }
+        if authority.len > 255 {
+            authority = authority[0..255]
+        }
+    }
     Text {
         o: out.to_fd(fd),
         utf8: utf8,
@@ -40,19 +88,91 @@ pub fn new(fd: int, utf8: bool, take ln: lines.Lines, take zone: clock.Zone, now
         last: List[bool](),
         pre: List[byte](),
         pre_at: List[int](),
-        corner: corner,
+        vert: vert,
         vleft: vleft,
-        zone: zone,
-        now: now,
+        corner: corner,
+        space: bs(spaces[cl]),
+        gap: !o.remove_space,
+        cols: cols,
+        colors: colors,
+        np: name.flags_of(o.quote, o.noprint, o.qmark),
+        hyper: o.hyperlink,
+        scheme: scheme,
+        authority: authority,
+        realbase: "",
+        pathoffset: 0,
         debug: false,
     }
 }
+
+// ---- OSC 8 (`src/render/unix.c:60`) ----
+
+/// tree's URL encoding (`src/render/escape.c:23`): ASCII letters and
+/// digits and `/-._~` as they are, every other byte `%XX` (DEVIATION D3:
+/// the real byte, not tree's sign-extended one). True when the last byte
+/// was a `/`.
+pub fn url_encode(mut o: out.Out, s: List[byte], from: int, to: int) -> bool {
+    let hex = "0123456789ABCDEF"
+    var slash = false
+    var i = from
+    while i < to {
+        let c = s[i] as int
+        if c >= 48 && c <= 57 ||
+            c >= 65 && c <= 90 ||
+            c >= 97 && c <= 122 ||
+            c == 47 ||
+            c == 45 ||
+            c == 46 ||
+            c == 95 ||
+            c == 126 {
+            (mut o.buf).push(s[i])
+        } else {
+            (mut o.buf).push(37 as byte)
+            (mut o.buf).push(hex.bytes()[c / 16])
+            (mut o.buf).push(hex.bytes()[c % 16])
+        }
+        slash = c == 47
+        i += 1
+    }
+    slash
+}
+
+fn open_link(mut t: Text, dir: List[byte], dirlen: int, file: List[byte], ffrom: int, fto: int) {
+    let off = t.pathoffset
+    let sublen = if dirlen > off then dirlen - off else 0
+    out.s(mut t.o, "\u{1b}]8;;")
+    out.s(mut t.o, t.scheme)
+    let au = bs(t.authority)
+    let _ = url_encode(mut t.o, au, 0, au.len)
+    out.c(mut t.o, 58)
+    let rb = bs(t.realbase)
+    var slash = url_encode(mut t.o, rb, 0, rb.len)
+    if sublen > 0 {
+        slash = slash || dir[off] as int == 47
+        if !slash {
+            out.c(mut t.o, 47)
+        }
+        if !url_encode(mut t.o, dir, off, off + sublen) {
+            out.c(mut t.o, 47)
+        }
+    } else if !slash {
+        out.c(mut t.o, 47)
+    }
+    let _ = url_encode(mut t.o, file, ffrom, fto)
+    out.s(mut t.o, "\u{1b}\\")
+}
+
+fn close_link(mut t: Text) {
+    out.s(mut t.o, "\u{1b}]8;;\u{1b}\\")
+}
+
+// ---- the suffixes (`src/render/unix.c:95`) ----
 
 fn is_exec(mode: int) -> bool {
     mode & 73 != 0
 }
 
-/// tree's `-F` suffix for an entry (`src/render/unix.c:95`).
+/// tree's `-F` suffix for an entry.
 fn ftype(o: opts.Opts, kind: int, exe: bool) -> int {
     if kind == 1 {
         return if o.dirsonly then 0 else 47
@@ -91,7 +211,7 @@ fn root_ftype(o: opts.Opts, st: ent.Meta) -> int {
 
 fn meta(mut t: Text, o: opts.Opts, st: ent.Meta, has: bool) {
     if has {
-        info.put_fill(mut t.o, o, t.zone, t.now, st)
+        info.put_fill(mut t.o, o, mut t.cols, st, true)
     }
 }
 
@@ -101,8 +221,30 @@ pub fn root(mut t: Text, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st
         return
     }
     let failed = err.len > 0
+    let pb = bs(path)
+    if t.hyper {
+        // per root: the absolute base and the offset past the root
+        let rp = fs_realpath(path) else |_| {
+            ""
+        }
+        t.realbase = rp
+        t.pathoffset = if rp.len > 0 then pb.len else 0
+    }
     meta(mut t, o, st, has_st)
-    name.put_str(mut t.o, path, t.utf8)
+    if t.hyper && !failed {
+        open_link(mut t, pb, pb.len, pb, 0, 0)
+    }
+    var colored = false
+    if !failed && t.colors.enabled && has_st {
+        colored = color.apply(t.colors, mut t.o, st.kind, st.mode, pb, 0, 0, false, false)
+    }
+    name.put_flags(mut t.o, pb, 0, pb.len, t.utf8, t.np)
+    if colored {
+        color.end(t.colors, mut t.o)
+    }
+    if t.hyper && !failed {
+        close_link(mut t)
+    }
     if o.classify {
         var fc = 0
         if has_st {
@@ -124,12 +266,16 @@ pub fn root(mut t: Text, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st
 }
 
 /// The indentation every entry of a directory at `depth` shares: one
-/// glyph and a space per ancestor (`src/render/unix.c:144`'s loop), built
-/// once per directory, since only the entry's own connector differs
-/// between siblings. The walk calls this before a directory's entries.
-/// Depth d's prefix is depth d-1's plus one glyph, so one buffer holds
-/// the deepest open level's and `pre_at[d]` is where depth d's ends.
-pub fn begin_level(mut t: Text, depth: int) {
+/// glyph per ancestor and, unless `--compress` is negative, a space
+/// (`draw_indent`, `src/render/unix.c:144`), built once per directory,
+/// since only the entry's own connector differs between siblings. The
+/// walk calls this before a directory's entries. Depth d's prefix is
+/// depth d-1's plus one glyph, so one buffer holds the deepest open
+/// level's and `pre_at[d]` is where depth d's ends.
+pub fn begin_level(mut t: Text, o: opts.Opts, depth: int) {
+    if o.noindent {
+        return
+    }
     while t.pre_at.len <= depth {
         (mut t.pre_at).push(0)
     }
@@ -145,18 +291,23 @@ pub fn begin_level(mut t: Text, depth: int) {
         let _ = (mut t.pre).pop() else 0 as byte
     }
     if depth - 1 < t.last.len && t.last[depth - 1] {
-        (mut t.pre).push(32 as byte)
-        (mut t.pre).push(32 as byte)
-        (mut t.pre).push(32 as byte)
-    } else {
+        let n = t.space.len
         var k = 0
-        let n = t.ln.vert.len
         while k < n {
-            (mut t.pre).push(t.ln.vert[k])
+            (mut t.pre).push(t.space[k])
+            k += 1
+        }
+    } else {
+        let n = t.vert.len
+        var k = 0
+        while k < n {
+            (mut t.pre).push(t.vert[k])
             k += 1
         }
     }
-    (mut t.pre).push(32 as byte)
+    if t.gap {
+        (mut t.pre).push(32 as byte)
+    }
     t.pre_at[depth] = t.pre.len
 }
 
@@ -182,7 +333,9 @@ fn indent(mut t: Text, depth: int, is_last: bool) {
             k += 1
         }
     }
-    (mut t.o.buf).push(32 as byte)
+    if t.gap {
+        (mut t.o.buf).push(32 as byte)
+    }
     while t.last.len <= depth {
         (mut t.last).push(false)
     }
@@ -191,10 +344,12 @@ fn indent(mut t: Text, depth: int, is_last: bool) {
 
 /// One entry, without its newline (`src/render/unix.c:268`). `lnk` is a
 /// symlink's target (any list when `e.lnk` is -1); `path` is the entry's
-/// full path, printed in place of the name under `-f`.
+/// full path (its last part `--condense`'s joined name), printed in
+/// place of the name under `-f`, and the hyperlink's target.
 pub fn entry(
     mut t: Text,
     o: opts.Opts,
+    a: ent.Arena,
     e: ent.Ent,
     lnk: List[byte],
     path: str,
@@ -205,12 +360,69 @@ pub fn entry(
         debug_entry(mut t, e, path)
         return
     }
-    indent(mut t, depth, is_last)
-    meta(mut t, o, e.st, e.has_st)
-    if o.fullpath {
-        name.put_str(mut t.o, path, t.utf8)
+    if o.metafirst {
+        meta(mut t, o, e.st, e.has_st)
+        if !o.noindent {
+            indent(mut t, depth, is_last)
+        }
     } else {
-        name.put(mut t.o, e.nm, 1, e.nm.len, t.utf8)
+        if !o.noindent {
+            indent(mut t, depth, is_last)
+        }
+        meta(mut t, o, e.st, e.has_st)
+    }
+    let cn = e.cname >= 0
+    let nlen = if cn then a.cnames[e.cname].len - 1 else e.nm.len - 1
+    var pb = List[byte]()
+    var dirlen = 0
+    if t.hyper || o.fullpath {
+        pb = bs(path)
+        dirlen = pb.len - nlen - 1
+    }
+    if t.hyper {
+        if cn {
+            open_link(mut t, pb, dirlen, a.cnames[e.cname], 1, a.cnames[e.cname].len)
+        } else {
+            open_link(mut t, pb, dirlen, e.nm, 1, e.nm.len)
+        }
+    }
+    var colored = false
+    if t.colors.enabled {
+        var kind = if e.has_st then e.st.kind else -1
+        var mode = if e.has_st then e.st.mode else 0
+        if e.lnk >= 0 && t.colors.linktarget {
+            kind = if e.flags & ent.f_orphan() != 0 then -1 else e.ltype
+            mode = e.lmode
+        }
+        let orphan = e.flags & ent.f_orphan() != 0
+        if cn {
+            colored = color.apply(
+                t.colors,
+                mut t.o,
+                kind,
+                mode,
+                a.cnames[e.cname],
+                1,
+                a.cnames[e.cname].len,
+                orphan,
+                false,
+            )
+        } else {
+            colored = color.apply(t.colors, mut t.o, kind, mode, e.nm, 1, e.nm.len, orphan, false)
+        }
+    }
+    if o.fullpath {
+        name.put_flags(mut t.o, pb, 0, pb.len, t.utf8, t.np)
+    } else if cn {
+        name.put_flags(mut t.o, a.cnames[e.cname], 1, a.cnames[e.cname].len, t.utf8, t.np)
+    } else {
+        name.put_flags(mut t.o, e.nm, 1, e.nm.len, t.utf8, t.np)
+    }
+    if colored {
+        color.end(t.colors, mut t.o)
+    }
+    if t.hyper {
+        close_link(mut t)
     }
     if o.classify && e.lnk < 0 {
         let s = ftype(o, e.kind, e.flags & ent.f_exec() != 0)
@@ -220,7 +432,22 @@ pub fn entry(
     }
     if e.lnk >= 0 {
         out.s(mut t.o, " -> ")
-        name.put(mut t.o, lnk, 0, lnk.len, t.utf8)
+        if t.hyper {
+            open_link(mut t, pb, dirlen, e.nm, 1, e.nm.len)
+        }
+        var lc = false
+        if t.colors.enabled {
+            let orphan = e.flags & ent.f_orphan() != 0
+            let lk = if orphan then -1 else e.ltype
+            lc = color.apply(t.colors, mut t.o, lk, e.lmode, lnk, 0, lnk.len, orphan, true)
+        }
+        name.put_flags(mut t.o, lnk, 0, lnk.len, t.utf8, t.np)
+        if lc {
+            color.end(t.colors, mut t.o)
+        }
+        if t.hyper {
+            close_link(mut t)
+        }
         if o.classify {
             let s = ftype(o, e.ltype, e.flags & ent.f_lexec() != 0)
             if s != 0 {
@@ -252,6 +479,52 @@ fn debug_entry(mut t: Text, e: ent.Ent, path: str) {
     out.maybe(mut t.o)
 }
 
+/// `--info`'s lines after an entry (`src/render/unix.c:194`): each under
+/// every level's continuation glyph, the entry's own included, then the
+/// line set's comment glyph, a space and the line.
+pub fn comment(mut t: Text, desc: List[List[byte]], depth: int) {
+    if t.debug {
+        return
+    }
+    let n = desc.len
+    var ln = 0
+    while ln < n {
+        var d = 1
+        while d <= depth {
+            let last = d < t.last.len && t.last[d]
+            if last {
+                out.bytes(mut t.o, t.space, 0, t.space.len)
+            } else {
+                out.bytes(mut t.o, t.vert, 0, t.vert.len)
+            }
+            if t.gap {
+                out.c(mut t.o, 32)
+            }
+            d += 1
+        }
+        if n == 1 {
+            out.bytes(mut t.o, t.ln.csingle, 0, t.ln.csingle.len)
+        } else if ln == 0 {
+            out.bytes(mut t.o, t.ln.ctop, 0, t.ln.ctop.len)
+        } else if ln < 2 {
+            if n == 2 {
+                out.bytes(mut t.o, t.ln.cbot, 0, t.ln.cbot.len)
+            } else {
+                out.bytes(mut t.o, t.ln.cmid, 0, t.ln.cmid.len)
+            }
+        } else if ln == n - 1 {
+            out.bytes(mut t.o, t.ln.cbot, 0, t.ln.cbot.len)
+        } else {
+            out.bytes(mut t.o, t.ln.cext, 0, t.ln.cext.len)
+        }
+        out.c(mut t.o, 32)
+        out.bytes(mut t.o, desc[ln], 0, desc[ln].len)
+        out.c(mut t.o, 10)
+        ln += 1
+    }
+    out.maybe(mut t.o)
+}
+
 /// `  [msg]` (`src/render/unix.c:347`).
 pub fn error(mut t: Text, msg: str) {
     if t.debug {
@@ -279,8 +552,8 @@ pub fn report(mut t: Text, o: opts.Opts, dirs: int, files: int, size: int) {
     }
     out.c(mut t.o, 10)
     if o.duflag {
-        out.s(mut t.o, info.psize(o.humanflag, size))
-        out.s(mut t.o, if o.humanflag then " used in " else " bytes used in ")
+        info.put_psize(mut t.o, o.humanflag, o.siflag, size)
+        out.s(mut t.o, if o.humanflag || o.siflag then " used in " else " bytes used in ")
     }
     let d = if dirs == 1 then "directory" else "directories"
     if o.dirsonly {
