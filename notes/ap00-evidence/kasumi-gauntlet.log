@@ -1,0 +1,284 @@
+### kasumi gauntlet at 0db8d10479fe41fdec3c08412771cdd3a102f1db, 2026-10-21T13:42:37Z
+ 09:42:37 up 4 days, 22:00, 10 users,  load average: 3.54, 4.22, 4.59
+
+### tools/fetch-toolchain
+fetch-toolchain: .wolf-bin/ already holds the pin (x86_64-unknown-linux-gnu)
+### exit 0: tools/fetch-toolchain
+
+### tools/check-fmt
+### exit 0: tools/check-fmt
+
+### tools/build --all
+build: target/native/aspen
+build: target/release/aspen
+### exit 0: tools/build --all
+
+### tools/check-test
+check-test: src/clock_test.lu [checked] pass (exit(0))
+check-test: src/glob_test.lu [checked] pass (exit(0))
+check-test: src/info_test.lu [checked] pass (exit(0))
+check-test: src/name_test.lu [checked] pass (exit(0))
+check-test: src/opts_test.lu [checked] pass (exit(0))
+check-test: wolf test: 5 passed, 0 not passed (exit 0)
+check-test: src/clock_test.lu [native] ok
+check-test: src/clock_test.lu [lupin] ok
+check-test: src/glob_test.lu [native] ok
+check-test: src/glob_test.lu [lupin] ok
+check-test: src/info_test.lu [native] ok
+check-test: src/info_test.lu [lupin] ok
+check-test: src/name_test.lu [native] ok
+check-test: src/name_test.lu [lupin] ok
+check-test: src/opts_test.lu [native] ok
+check-test: src/opts_test.lu [lupin] ok
+### exit 0: tools/check-test
+
+### tools/fetch-c-aspen
+fetch-c-aspen: .oracle/c-aspen already at 944a39821549ef674ca8f0369b31b5bb6c5620b3
+### exit 0: tools/fetch-c-aspen
+
+### tools/in-container tree --version; id; cd .oracle/c-aspen && ./configure >/dev/null && make -s && ./aspen --version
+tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+uid=1000(mfwolffe) gid=1000(mfwolffe) groups=1000(mfwolffe)
+aspen v0.1.0
+### exit 0: tools/in-container tree --version; id; cd .oracle/c-aspen && ./configure >/dev/null && make -s && ./aspen --version
+
+### tools/in-container tools/oracle --bin target/native/aspen
+oracle: the oracle is tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+oracle: aspen is /home/mfwolffe/lanes/ap00/aspen/target/native/aspen (aspen v0.1.0)
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  color          rc 2      676 bytes    42 lines
+  html           rc 2     4041 bytes    81 lines
+  xml            rc 2     1969 bytes    56 lines
+  follow         rc 2      728 bytes    45 lines
+  xdev           rc 2      676 bytes    42 lines
+  fromfile       rc 0       49 bytes     3 lines
+  fromtabfile    rc 0       49 bytes     3 lines
+  fflinks        rc 2      676 bytes    42 lines
+  filelimit      rc 0       76 bytes     3 lines
+  charset        rc 2      676 bytes    42 lines
+  cp437          rc 2      676 bytes    42 lines
+  version-sort   rc 2      676 bytes    42 lines
+  sort           rc 2      676 bytes    42 lines
+  user           rc 2     1156 bytes    42 lines
+  group          rc 2     1156 bytes    42 lines
+  inodes         rc 2     1116 bytes    42 lines
+  device         rc 2      956 bytes    42 lines
+  qmark          rc 2      619 bytes    42 lines
+  noprint        rc 2      615 bytes    42 lines
+  quote          rc 2      762 bytes    42 lines
+  timefmt        rc 2     1236 bytes    42 lines
+  rerun          rc 2      676 bytes    42 lines
+  noindent       rc 2      452 bytes    42 lines
+  ctime          rc 2      676 bytes    42 lines
+  unsorted       rc 2      676 bytes    42 lines
+  filesfirst     rc 2      676 bytes    42 lines
+  si             rc 2      996 bytes    42 lines
+  metafirst      rc 2      676 bytes    42 lines
+  gitignore      rc 2      676 bytes    42 lines
+  gitfile        rc 1        0 bytes     0 lines
+  info           rc 2      676 bytes    42 lines
+  infofile       rc 1        0 bytes     0 lines
+  condense       rc 0      676 bytes    42 lines
+  compress       rc 2      620 bytes    42 lines
+  hyperlink      rc 2     4282 bytes    42 lines
+  scheme         rc 2      676 bytes    42 lines
+  authority      rc 2      676 bytes    42 lines
+  opt-toggle     rc 2      676 bytes    42 lines
+  title          rc 2      676 bytes    42 lines
+  nolinks        rc 2      676 bytes    42 lines
+  hintro         rc 2      676 bytes    42 lines
+  houtro         rc 2      676 bytes    42 lines
+  acl            rc 2     1276 bytes    42 lines
+  selinux        rc 2      842 bytes    42 lines
+oracle: 864 agree / 0 differ / 616 not-yet
+### exit 0: tools/in-container tools/oracle --bin target/native/aspen
+
+### tools/in-container tools/oracle --bin target/release/aspen
+oracle: the oracle is tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+oracle: aspen is /home/mfwolffe/lanes/ap00/aspen/target/release/aspen (aspen v0.1.0)
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  color          rc 2      676 bytes    42 lines
+  html           rc 2     4041 bytes    81 lines
+  xml            rc 2     1969 bytes    56 lines
+  follow         rc 2      728 bytes    45 lines
+  xdev           rc 2      676 bytes    42 lines
+  fromfile       rc 0       49 bytes     3 lines
+  fromtabfile    rc 0       49 bytes     3 lines
+  fflinks        rc 2      676 bytes    42 lines
+  filelimit      rc 0       76 bytes     3 lines
+  charset        rc 2      676 bytes    42 lines
+  cp437          rc 2      676 bytes    42 lines
+  version-sort   rc 2      676 bytes    42 lines
+  sort           rc 2      676 bytes    42 lines
+  user           rc 2     1156 bytes    42 lines
+  group          rc 2     1156 bytes    42 lines
+  inodes         rc 2     1116 bytes    42 lines
+  device         rc 2      956 bytes    42 lines
+  qmark          rc 2      619 bytes    42 lines
+  noprint        rc 2      615 bytes    42 lines
+  quote          rc 2      762 bytes    42 lines
+  timefmt        rc 2     1236 bytes    42 lines
+  rerun          rc 2      676 bytes    42 lines
+  noindent       rc 2      452 bytes    42 lines
+  ctime          rc 2      676 bytes    42 lines
+  unsorted       rc 2      676 bytes    42 lines
+  filesfirst     rc 2      676 bytes    42 lines
+  si             rc 2      996 bytes    42 lines
+  metafirst      rc 2      676 bytes    42 lines
+  gitignore      rc 2      676 bytes    42 lines
+  gitfile        rc 1        0 bytes     0 lines
+  info           rc 2      676 bytes    42 lines
+  infofile       rc 1        0 bytes     0 lines
+  condense       rc 0      676 bytes    42 lines
+  compress       rc 2      620 bytes    42 lines
+  hyperlink      rc 2     4282 bytes    42 lines
+  scheme         rc 2      676 bytes    42 lines
+  authority      rc 2      676 bytes    42 lines
+  opt-toggle     rc 2      676 bytes    42 lines
+  title          rc 2      676 bytes    42 lines
+  nolinks        rc 2      676 bytes    42 lines
+  hintro         rc 2      676 bytes    42 lines
+  houtro         rc 2      676 bytes    42 lines
+  acl            rc 2     1276 bytes    42 lines
+  selinux        rc 2      842 bytes    42 lines
+oracle: 864 agree / 0 differ / 616 not-yet
+### exit 0: tools/in-container tools/oracle --bin target/release/aspen
+
+### tools/in-container tools/golden --bin target/release/aspen
+golden: run.sh (exit 1), locales: C en_US.UTF-8 C.UTF-8
+  self-test(ref-vs-ref) [C]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C]: 286 cases, 182 diffs
+  self-test(ref-vs-ref) [en_US.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [en_US.UTF-8]: 286 cases, 186 diffs
+  self-test(ref-vs-ref) [C.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C.UTF-8]: 286 cases, 182 diffs
+  not-yet (en_US.UTF-8 collation, src/locale): -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aF %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aP .h* %C
+  not-yet (en_US.UTF-8 collation, src/locale): -n -a %C
+golden: run.sh matrix: 308 agree / 0 differ / 550 not-yet (4 of them v1 cases under en_US.UTF-8)
+golden: walk.sh (exit 0): 0 v1 report(s), 0 not-yet report(s); last line: WALK: discovery matches tree (paths + dirs, default and -a)
+golden: outfile.sh (exit 1): 0 v1 report(s), 1 not-yet report(s); last line: <     <report>
+golden: fpath.sh (exit 1): 0 v1 report(s), 2 not-yet report(s); last line: <         <directory name="q/sub">
+golden: patterns.sh (exit 1): 0 v1 report(s), 1 not-yet report(s); last line: <             <file name="file1.txt"></file>
+golden: usage.sh (exit 1): 0 v1 report(s), 34 not-yet report(s); last line: USAGE: rc=2 for [sort-badval], expected 1
+golden: deviations.sh (exit 1): 0 v1 report(s), 16 not-yet report(s); last line: DEVIATIONS A7: default -H emitted no VERSION footer block
+golden: structural.sh (exit 1): 0 v1 report(s), 12 not-yet report(s); last line: STRUCT xml [-L 2]: <report> open=0 close=0 (want 1/1)
+golden: fdlimit.sh (exit 0): 0 v1 report(s), 0 not-yet report(s); last line: FDLIMIT: deep chain survives a low soft fd limit (soft raised to hard)
+golden: 308 agree / 0 differ / 616 not-yet
+### exit 0: tools/in-container tools/golden --bin target/release/aspen
+
+### tools/in-container tools/fuzz --bin target/release/aspen --n 2000
+fuzz: 2000 trees from /home/mfwolffe/lanes/ap00/aspen/.oracle/c-aspen/tests/golden/fuzz.sh's generator, base seed 1
+fuzz: the v1 pool: -a -d -f -s -h -p -D -F -n -A -t -r --du --prune --dirsfirst --noreport --matchdirs --ignore-case -J -L1 -L2 -L3
+fuzz: 4000 runs, 0 differences (replay: --seed <seed-1> --n 1)
+### exit 0: tools/in-container tools/fuzz --bin target/release/aspen --n 2000
+
+### tools/in-container tools/perf --bin target/release/aspen
+perf: tree tree v2.3.2, C aspen aspen v0.1.0, aspen aspen v0.1.0; 3 runs each, taskset -c 0-3, LC_ALL=C
+perf: wide1k    default tree      2.9 ms  C aspen      2.0 ms  aspen      2.2 ms  aspen/C  1.12  aspen/tree  0.77  ok
+perf:   runs (ms): tree 4.6 2.9 2.8  C 2.0 2.1 1.9  aspen 2.3 2.2 2.1
+perf: wide1k    -s      tree      2.6 ms  C aspen      2.2 ms  aspen      2.8 ms  aspen/C  1.30  aspen/tree  1.08  ok (reported, not gated)
+perf:   runs (ms): tree 2.6 2.6 2.6  C 2.2 2.2 2.1  aspen 2.9 2.8 2.8
+perf: tree100k  default tree     92.5 ms  C aspen     23.8 ms  aspen     39.7 ms  aspen/C  1.67  aspen/tree  0.43  ok
+perf:   runs (ms): tree 92.1 93.6 92.5  C 23.7 24.3 23.8  aspen 40.5 39.6 39.7
+perf: tree100k  -s      tree     99.6 ms  C aspen     46.1 ms  aspen     98.1 ms  aspen/C  2.13  aspen/tree  0.98  OVER (reported, not gated)
+perf:   runs (ms): tree 101.1 99.5 99.6  C 45.2 46.1 46.3  aspen 96.9 101.2 98.1
+perf: the listing within 2x of C aspen on both workloads
+### exit 0: tools/in-container tools/perf --bin target/release/aspen
+
+### tools/in-container tools/perf --bin target/release/aspen
+perf: tree tree v2.3.2, C aspen aspen v0.1.0, aspen aspen v0.1.0; 3 runs each, taskset -c 0-3, LC_ALL=C
+perf: wide1k    default tree      2.7 ms  C aspen      1.9 ms  aspen      2.2 ms  aspen/C  1.13  aspen/tree  0.82  ok
+perf:   runs (ms): tree 2.7 2.6 2.7  C 1.9 1.9 1.9  aspen 2.0 2.2 2.2
+perf: wide1k    -s      tree      2.7 ms  C aspen      2.2 ms  aspen      2.9 ms  aspen/C  1.30  aspen/tree  1.07  ok (reported, not gated)
+perf:   runs (ms): tree 2.7 2.7 2.5  C 2.2 2.2 2.3  aspen 2.9 2.7 2.9
+perf: tree100k  default tree     92.8 ms  C aspen     23.9 ms  aspen     39.9 ms  aspen/C  1.67  aspen/tree  0.43  ok
+perf:   runs (ms): tree 92.4 94.4 92.8  C 24.2 23.9 23.8  aspen 39.9 40.1 39.5
+perf: tree100k  -s      tree    100.2 ms  C aspen     46.6 ms  aspen     97.5 ms  aspen/C  2.09  aspen/tree  0.97  OVER (reported, not gated)
+perf:   runs (ms): tree 101.7 100.2 99.8  C 47.7 46.6 46.2  aspen 94.2 99.2 97.5
+perf: the listing within 2x of C aspen on both workloads
+### exit 0: tools/in-container tools/perf --bin target/release/aspen
+
+### tools/in-container tools/perf --bin target/release/aspen
+perf: tree tree v2.3.2, C aspen aspen v0.1.0, aspen aspen v0.1.0; 3 runs each, taskset -c 0-3, LC_ALL=C
+perf: wide1k    default tree      2.5 ms  C aspen      1.9 ms  aspen      2.0 ms  aspen/C  1.07  aspen/tree  0.80  ok
+perf:   runs (ms): tree 2.5 2.5 2.5  C 1.8 1.9 1.9  aspen 2.0 2.0 2.0
+perf: wide1k    -s      tree      2.6 ms  C aspen      2.1 ms  aspen      2.6 ms  aspen/C  1.23  aspen/tree  1.00  ok (reported, not gated)
+perf:   runs (ms): tree 2.6 2.8 2.6  C 2.1 2.3 2.1  aspen 2.7 2.6 2.6
+perf: tree100k  default tree     96.1 ms  C aspen     25.3 ms  aspen     40.7 ms  aspen/C  1.61  aspen/tree  0.42  ok
+perf:   runs (ms): tree 93.0 100.8 96.1  C 25.4 25.3 24.2  aspen 40.3 40.7 41.7
+perf: tree100k  -s      tree    102.1 ms  C aspen     48.9 ms  aspen     96.7 ms  aspen/C  1.98  aspen/tree  0.95  ok (reported, not gated)
+perf:   runs (ms): tree 113.5 99.8 102.1  C 48.9 45.0 49.1  aspen 95.2 102.2 96.7
+perf: the listing within 2x of C aspen on both workloads
+### exit 0: tools/in-container tools/perf --bin target/release/aspen
+
+### podman run --rm --userns=keep-id -u 0 -v /home/mfwolffe/lanes/ap00/aspen:/home/mfwolffe/lanes/ap00/aspen -w /home/mfwolffe/lanes/ap00/aspen docker.io/library/ubuntu:24.04 sh -c apt-get update -qq >/dev/null && apt-get install -y -qq gcc binutils clang lld >/dev/null 2>&1 && tools/mkaspen target/mkaspen && chown -R "$(stat -c %u:%g .)" target
+build: target/static/aspen
+build: target/static/aspen
+aspen v0.1.0
+aspen b34106b5bf15252e1024d1bd67839044008b5e5f4f4ae483b75821a329cda384 14497536
+aspen (built twice, the same digest); stripped: 1577336 bytes, sha256 bd6ad74df411678284fe460a7eb3d00e3a803c38acaa46fa69c19f8d7de630bb
+linked against: /usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/libc.a
+### exit 0: podman run --rm --userns=keep-id -u 0 -v /home/mfwolffe/lanes/ap00/aspen:/home/mfwolffe/lanes/ap00/aspen -w /home/mfwolffe/lanes/ap00/aspen docker.io/library/ubuntu:24.04 sh -c apt-get update -qq >/dev/null && apt-get install -y -qq gcc binutils clang lld >/dev/null 2>&1 && tools/mkaspen target/mkaspen && chown -R "$(stat -c %u:%g .)" target
+
+### tools/in-container tools/oracle --bin target/mkaspen/aspen
+oracle: the oracle is tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+oracle: aspen is /home/mfwolffe/lanes/ap00/aspen/target/mkaspen/aspen (aspen v0.1.0)
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  color          rc 2      676 bytes    42 lines
+  html           rc 2     4041 bytes    81 lines
+  xml            rc 2     1969 bytes    56 lines
+  follow         rc 2      728 bytes    45 lines
+  xdev           rc 2      676 bytes    42 lines
+  fromfile       rc 0       49 bytes     3 lines
+  fromtabfile    rc 0       49 bytes     3 lines
+  fflinks        rc 2      676 bytes    42 lines
+  filelimit      rc 0       76 bytes     3 lines
+  charset        rc 2      676 bytes    42 lines
+  cp437          rc 2      676 bytes    42 lines
+  version-sort   rc 2      676 bytes    42 lines
+  sort           rc 2      676 bytes    42 lines
+  user           rc 2     1156 bytes    42 lines
+  group          rc 2     1156 bytes    42 lines
+  inodes         rc 2     1116 bytes    42 lines
+  device         rc 2      956 bytes    42 lines
+  qmark          rc 2      619 bytes    42 lines
+  noprint        rc 2      615 bytes    42 lines
+  quote          rc 2      762 bytes    42 lines
+  timefmt        rc 2     1236 bytes    42 lines
+  rerun          rc 2      676 bytes    42 lines
+  noindent       rc 2      452 bytes    42 lines
+  ctime          rc 2      676 bytes    42 lines
+  unsorted       rc 2      676 bytes    42 lines
+  filesfirst     rc 2      676 bytes    42 lines
+  si             rc 2      996 bytes    42 lines
+  metafirst      rc 2      676 bytes    42 lines
+  gitignore      rc 2      676 bytes    42 lines
+  gitfile        rc 1        0 bytes     0 lines
+  info           rc 2      676 bytes    42 lines
+  infofile       rc 1        0 bytes     0 lines
+  condense       rc 0      676 bytes    42 lines
+  compress       rc 2      620 bytes    42 lines
+  hyperlink      rc 2     4282 bytes    42 lines
+  scheme         rc 2      676 bytes    42 lines
+  authority      rc 2      676 bytes    42 lines
+  opt-toggle     rc 2      676 bytes    42 lines
+  title          rc 2      676 bytes    42 lines
+  nolinks        rc 2      676 bytes    42 lines
+  hintro         rc 2      676 bytes    42 lines
+  houtro         rc 2      676 bytes    42 lines
+  acl            rc 2     1276 bytes    42 lines
+  selinux        rc 2      842 bytes    42 lines
+oracle: 864 agree / 0 differ / 616 not-yet
+### exit 0: tools/in-container tools/oracle --bin target/mkaspen/aspen
+
+### tools/in-container tools/selftest target/release/aspen
+selftest: oracle-glyph went red on its planted difference (status 1): ok
+selftest: oracle-count went red on its planted difference (status 1): ok
+selftest: golden-glyph went red on its planted difference (status 1): ok
+selftest: fuzz-glyph went red on its planted difference (status 1): ok
+selftest: perf-slow went red on its planted difference (status 1): ok
+### exit 0: tools/in-container tools/selftest target/release/aspen
+
+### done 2026-10-21T13:46:43Z
