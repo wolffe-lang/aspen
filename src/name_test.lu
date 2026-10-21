@@ -1,0 +1,46 @@
+//! The name printer's rows, in both branches: the C locale's escapes
+//! (control letters, a backslash and a space escaped, octal for the
+//! rest) and a UTF-8 locale's (printable characters as they are, octal
+//! code points for the rest, a bad sequence back to the byte branch).
+
+use name
+use out
+
+fn b(s: str) -> List[byte] {
+    var r = List[byte]()
+    for x in s.bytes() {
+        (mut r).push(x)
+    }
+    r
+}
+
+fn shown(bs: List[byte], utf8: bool) -> str {
+    var o = out.to_fd(1)
+    name.put(mut o, bs, 0, bs.len, utf8)
+    str_from_utf8(o.buf) else "<not utf-8>"
+}
+
+fn main() {
+    assert(shown(b("plain.txt"), false) == "plain.txt", "plain in C")
+    assert(shown(b("a dir"), false) == "a\\ dir", "a space in C")
+    assert(shown(b("back\\slash"), false) == "back\\\\slash", "a backslash in C")
+    assert(shown(b("tab\tname"), false) == "tab\\tname", "a tab in C")
+    assert(shown(b("naïve"), false) == "na\\303\\257ve", "UTF-8 in C is octal")
+    assert(shown(bl([1, 65]), false) == "\\001A", "a control byte in C")
+    assert(shown(bl([127]), false) == "\\177", "DEL in C")
+    assert(shown(b("a dir"), true) == "a dir", "a space in UTF-8")
+    assert(shown(b("back\\slash"), true) == "back\\slash", "a backslash in UTF-8")
+    assert(shown(b("tab\tname"), true) == "tab\\011name", "a tab in UTF-8")
+    assert(shown(b("naïve"), true) == "naïve", "UTF-8 as is")
+    assert(shown(b("日本語"), true) == "日本語", "CJK as is")
+    assert(shown(b("x\u{85}y"), true) == "x\\205y", "a C1 control in UTF-8")
+    assert(shown(bl([97, 255, 98]), true) == "a\\377b", "a bad sequence falls back")
+}
+
+fn bl(xs: List[int]) -> List[byte] {
+    var r = List[byte]()
+    for x in xs {
+        (mut r).push(x as byte)
+    }
+    r
+}
