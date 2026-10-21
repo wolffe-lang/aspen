@@ -1,0 +1,349 @@
+### kasumi gauntlet at 5c5bc724be6693ca46fb92b9f915a72d0841039b (uncommitted: 2 files), 2026-10-21T20:41:04Z
+ 16:41:04 up 5 days,  4:58,  6 users,  load average: 0.30, 0.82, 0.84
+
+### tools/fetch-toolchain
+fetch-toolchain: .wolf-bin/ already holds the pin (x86_64-unknown-linux-gnu)
+### exit 0: tools/fetch-toolchain
+
+### tools/check-fmt
+### exit 0: tools/check-fmt
+
+### tools/build --all
+build: target/native/aspen
+build: target/release/aspen
+### exit 0: tools/build --all
+
+### tools/check-test
+check-test: src/clock_test.lu [checked] pass (exit(0))
+check-test: src/glob_test.lu [checked] pass (exit(0))
+check-test: src/info_test.lu [checked] pass (exit(0))
+check-test: src/name_test.lu [checked] pass (exit(0))
+check-test: src/opts_test.lu [checked] pass (exit(0))
+check-test: src/tfmt_test.lu [checked] pass (exit(0))
+check-test: wolf test: 6 passed, 0 not passed (exit 0)
+check-test: src/clock_test.lu [native] ok
+check-test: src/clock_test.lu [lupin] ok
+check-test: src/glob_test.lu [native] ok
+check-test: src/glob_test.lu [lupin] ok
+check-test: src/info_test.lu [native] ok
+check-test: src/info_test.lu [lupin] ok
+check-test: src/name_test.lu [native] ok
+check-test: src/name_test.lu [lupin] ok
+check-test: src/opts_test.lu [native] ok
+check-test: src/opts_test.lu [lupin] ok
+check-test: src/tfmt_test.lu [native] ok
+check-test: src/tfmt_test.lu [lupin] ok
+### exit 0: tools/check-test
+
+### tools/fetch-c-aspen
+fetch-c-aspen: .oracle/c-aspen already at 944a39821549ef674ca8f0369b31b5bb6c5620b3
+### exit 0: tools/fetch-c-aspen
+
+### tools/in-container tree --version; id; cd .oracle/c-aspen && ./configure >/dev/null && make -s && ./aspen --version
+tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+uid=1000(mfwolffe) gid=1000(mfwolffe) groups=1000(mfwolffe)
+aspen v0.1.0
+### exit 0: tools/in-container tree --version; id; cd .oracle/c-aspen && ./configure >/dev/null && make -s && ./aspen --version
+
+### tools/in-container tools/oracle --bin target/native/aspen
+oracle: the oracle is tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+oracle: aspen is /home/mfwolffe/lanes/ap01/aspen/target/native/aspen (aspen v0.1.0)
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  acl            rc 2     1276 bytes    42 lines
+  selinux        rc 2      842 bytes    42 lines
+oracle: 2904 agree / 0 differ / 32 not-yet
+### exit 0: tools/in-container tools/oracle --bin target/native/aspen
+
+### tools/in-container tools/oracle --bin target/release/aspen
+oracle: the oracle is tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+oracle: aspen is /home/mfwolffe/lanes/ap01/aspen/target/release/aspen (aspen v0.1.0)
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  acl            rc 2     1276 bytes    42 lines
+  selinux        rc 2      842 bytes    42 lines
+oracle: 2904 agree / 0 differ / 32 not-yet
+### exit 0: tools/in-container tools/oracle --bin target/release/aspen
+
+### tools/in-container tools/golden --bin target/release/aspen
+golden: run.sh (exit 1), locales: C en_US.UTF-8 C.UTF-8
+  self-test(ref-vs-ref) [C]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C]: 286 cases, 0 diffs
+  self-test(ref-vs-ref) [en_US.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [en_US.UTF-8]: 286 cases, 29 diffs
+  self-test(ref-vs-ref) [C.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C.UTF-8]: 286 cases, 0 diffs
+  not-yet (en_US.UTF-8 collation, src/locale): -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aF %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aP .h* %C
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress=1 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress=-2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 4 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --charset=ascii --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --charset=ascii --compress=-3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -J --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -J --compress 3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -X --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -X --compress=-1 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -H --compress 2 --hintro %h --houtro %o %V
+  not-yet (en_US.UTF-8 collation, src/locale): --gitignore -a %G
+  not-yet (en_US.UTF-8 collation, src/locale): --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info -a %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info --charset=ascii %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info -F %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info --du %I
+  not-yet (en_US.UTF-8 collation, src/locale): --infofile %I/.info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -n -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -R -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -J --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -X --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -H . --hintro=%h --houtro=%o --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -H . --hintro=%h --houtro=%o -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -a --fromfile %F/paths.txt
+golden: run.sh matrix: 829 agree / 0 differ / 29 not-yet (29 of them v1 cases under en_US.UTF-8)
+golden: walk.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: WALK: discovery matches tree (paths + dirs, default and -a)
+golden: color.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: COLOR: matches tree (-C / env cases)
+golden: pty.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: PTY: matches tree (auto-color on a real terminal)
+golden: outfile.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: OUTFILE: -o writes the file byte-identically to tree (stdout empty)
+golden: rerun.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: RERUN: ok (-R 00Tree.html generation byte-identical at -L1; stdout+fileset+counts at -L2)
+golden: cyclic.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: CYCLIC: ok (cross-dir cycle detection deterministic + == tree, 30 inode layouts)
+golden: adversarial.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: ADVERSARIAL: hostile inputs survive + match tree (gitignore-backslash, 64k fromfile, 600k TREE_COLORS)
+golden: patterns.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: PATTERNS: slashed -P/-I match basename+path+suffix == tree 2.3.2 (streaming/-J/-X/-L/--matchdirs)
+golden: fpath.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: FPATH: -f root trailing-slash canonical == tree (root line + child paths, all renderers)
+golden: usage.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: USAGE: help/usage/bad-flag byte-identical to tree (name aside); --version ok
+golden: fdlimit.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: FDLIMIT: deep chain survives a low soft fd limit (soft raised to hard)
+golden: threads.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: THREADS: parallel stat deterministic (--threads 1 == 16 == tree); strict parse; dead-zone serial
+golden: deviations.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: DEVIATIONS: all documented deviations hold (aspen correct where tree bugs)
+golden: structural.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: STRUCT: -J/-X well-formed (balanced, single report, standalone comma)
+golden: 829 agree / 0 differ / 29 not-yet (0 skip(s), 0 report(s) on tree's undefined behaviour)
+### exit 0: tools/in-container tools/golden --bin target/release/aspen
+
+### tools/in-container tools/golden --bin target/native/aspen
+golden: run.sh (exit 1), locales: C en_US.UTF-8 C.UTF-8
+  self-test(ref-vs-ref) [C]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C]: 286 cases, 0 diffs
+  self-test(ref-vs-ref) [en_US.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [en_US.UTF-8]: 286 cases, 29 diffs
+  self-test(ref-vs-ref) [C.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C.UTF-8]: 286 cases, 0 diffs
+  not-yet (en_US.UTF-8 collation, src/locale): -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aF %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aP .h* %C
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress=1 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress=-2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 4 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --charset=ascii --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --charset=ascii --compress=-3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -J --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -J --compress 3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -X --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -X --compress=-1 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -H --compress 2 --hintro %h --houtro %o %V
+  not-yet (en_US.UTF-8 collation, src/locale): --gitignore -a %G
+  not-yet (en_US.UTF-8 collation, src/locale): --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info -a %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info --charset=ascii %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info -F %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info --du %I
+  not-yet (en_US.UTF-8 collation, src/locale): --infofile %I/.info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -n -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -R -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -J --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -X --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -H . --hintro=%h --houtro=%o --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -H . --hintro=%h --houtro=%o -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -a --fromfile %F/paths.txt
+golden: run.sh matrix: 829 agree / 0 differ / 29 not-yet (29 of them v1 cases under en_US.UTF-8)
+golden: walk.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: WALK: discovery matches tree (paths + dirs, default and -a)
+golden: color.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: COLOR: matches tree (-C / env cases)
+golden: pty.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: PTY: matches tree (auto-color on a real terminal)
+golden: outfile.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: OUTFILE: -o writes the file byte-identically to tree (stdout empty)
+golden: rerun.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: RERUN: ok (-R 00Tree.html generation byte-identical at -L1; stdout+fileset+counts at -L2)
+golden: cyclic.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: CYCLIC: ok (cross-dir cycle detection deterministic + == tree, 30 inode layouts)
+golden: adversarial.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: ADVERSARIAL: hostile inputs survive + match tree (gitignore-backslash, 64k fromfile, 600k TREE_COLORS)
+golden: patterns.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: PATTERNS: slashed -P/-I match basename+path+suffix == tree 2.3.2 (streaming/-J/-X/-L/--matchdirs)
+golden: fpath.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: FPATH: -f root trailing-slash canonical == tree (root line + child paths, all renderers)
+golden: usage.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: USAGE: help/usage/bad-flag byte-identical to tree (name aside); --version ok
+golden: fdlimit.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: FDLIMIT: deep chain survives a low soft fd limit (soft raised to hard)
+golden: threads.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: THREADS: parallel stat deterministic (--threads 1 == 16 == tree); strict parse; dead-zone serial
+golden: deviations.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: DEVIATIONS: all documented deviations hold (aspen correct where tree bugs)
+golden: structural.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: STRUCT: -J/-X well-formed (balanced, single report, standalone comma)
+golden: 829 agree / 0 differ / 29 not-yet (0 skip(s), 0 report(s) on tree's undefined behaviour)
+### exit 0: tools/in-container tools/golden --bin target/native/aspen
+
+### tools/in-container tools/fuzz --bin target/release/aspen --n 2000
+fuzz: 2000 trees from /home/mfwolffe/lanes/ap01/aspen/.oracle/c-aspen/tests/golden/fuzz.sh's generator, base seed 1
+fuzz: the v1 pool: -a -d -f -i -l -x -s -h -p -u -g -D -F -Q -N -q -C -n -A -S -t -c -v -U -r --du --prune --dirsfirst --filesfirst --noreport --matchdirs --condense --compress=2 --compress=-1 --ignore-case --metafirst -J -X -L1 -L2 -L3
+fuzz: 4000 runs, 0 differences (replay: --seed <seed-1> --n 1)
+### exit 0: tools/in-container tools/fuzz --bin target/release/aspen --n 2000
+
+### tools/in-container tools/aspdiff --bin /home/mfwolffe/lanes/ap01/aspen/target/release/aspen --c-bin /home/mfwolffe/lanes/ap01/aspen/.oracle/c-aspen/aspen
+aspdiff: 44 runs, 0 differences against C aspen aspen v0.1.0
+### exit 0: tools/in-container tools/aspdiff --bin /home/mfwolffe/lanes/ap01/aspen/target/release/aspen --c-bin /home/mfwolffe/lanes/ap01/aspen/.oracle/c-aspen/aspen
+
+### tools/in-container tools/collation --bin target/release/aspen
+  collation alone: -a %C
+  collation alone: -aF %C
+  collation alone: -aP .h* %C
+  collation alone: --compress 2 %V
+  collation alone: --compress 3 %V
+  collation alone: --compress=1 %V
+  collation alone: --compress=-2 %V
+  collation alone: --compress 4 %V
+  collation alone: --charset=ascii --compress 2 %V
+  collation alone: --charset=ascii --compress=-3 %V
+  collation alone: -J --compress 2 %V
+  collation alone: -J --compress 3 %V
+  collation alone: -X --compress 2 %V
+  collation alone: -X --compress=-1 %V
+  collation alone: -H --compress 2 --hintro %h --houtro %o %V
+  collation alone: --gitignore -a %G
+  collation alone: --info %I
+  collation alone: --info -a %I
+  collation alone: --info --charset=ascii %I
+  collation alone: --info -F %I
+  collation alone: --info --du %I
+  collation alone: --infofile %I/.info %I
+  collation alone: -n -a %C
+  collation alone: -R -a %C
+  collation alone: -J --info %I
+  collation alone: -X --info %I
+  collation alone: -H . --hintro=%h --houtro=%o --info %I
+  collation alone: -H . --hintro=%h --houtro=%o -a %C
+  collation alone: -a --fromfile %F/paths.txt
+collation: 286 cases under en_US.UTF-8: 29 differ from tree, 29 of them by collation alone (tree with LC_COLLATE=C agrees), 0 otherwise
+collation: /usr/share/i18n/locales/iso14651_t1_common: 3386286 bytes, 85612 lines, 30677 collating elements
+collation: /usr/lib/locale/locale-archive: 3064432 bytes
+### exit 0: tools/in-container tools/collation --bin target/release/aspen
+
+### tools/in-container tools/perf --bin target/release/aspen
+perf: tree tree v2.3.2, C aspen aspen v0.1.0, aspen aspen v0.1.0; 3 runs each, taskset -c 0-3, LC_ALL=C
+perf: wide1k    default tree      2.5 ms  C aspen      1.8 ms  aspen      2.1 ms  aspen/C  1.15  aspen/tree  0.85  ok
+perf:   runs (ms): tree 2.6 2.4 2.5  C 1.8 1.8 1.8  aspen 2.1 2.1 2.0
+perf: wide1k    -s      tree      2.4 ms  C aspen      2.0 ms  aspen      2.4 ms  aspen/C  1.17  aspen/tree  1.00  ok
+perf:   runs (ms): tree 2.4 2.4 2.4  C 2.0 2.1 2.0  aspen 2.4 2.4 2.4
+perf: tree100k  default tree     91.5 ms  C aspen     22.8 ms  aspen     38.6 ms  aspen/C  1.70  aspen/tree  0.42  ok
+perf:   runs (ms): tree 92.2 91.3 91.5  C 22.7 22.8 22.9  aspen 38.6 38.2 38.7
+perf: tree100k  -s      tree     97.7 ms  C aspen     44.7 ms  aspen     70.5 ms  aspen/C  1.58  aspen/tree  0.72  ok
+perf:   runs (ms): tree 98.0 97.5 97.7  C 45.4 44.6 44.7  aspen 71.7 70.5 68.3
+perf: the listing within 2x and -s within 2x of C aspen on both workloads
+### exit 0: tools/in-container tools/perf --bin target/release/aspen
+
+### tools/in-container tools/perf --bin target/release/aspen
+perf: tree tree v2.3.2, C aspen aspen v0.1.0, aspen aspen v0.1.0; 3 runs each, taskset -c 0-3, LC_ALL=C
+perf: wide1k    default tree      2.7 ms  C aspen      1.9 ms  aspen      2.3 ms  aspen/C  1.23  aspen/tree  0.87  ok
+perf:   runs (ms): tree 3.4 2.5 2.7  C 2.5 1.8 1.9  aspen 3.1 2.3 2.1
+perf: wide1k    -s      tree      2.5 ms  C aspen      2.2 ms  aspen      2.5 ms  aspen/C  1.14  aspen/tree  0.98  ok
+perf:   runs (ms): tree 2.5 2.5 2.6  C 2.3 2.0 2.2  aspen 2.8 2.4 2.5
+perf: tree100k  default tree     94.0 ms  C aspen     24.1 ms  aspen     40.2 ms  aspen/C  1.67  aspen/tree  0.43  ok
+perf:   runs (ms): tree 94.0 91.6 97.1  C 26.2 24.1 23.6  aspen 40.2 41.8 39.8
+perf: tree100k  -s      tree    100.5 ms  C aspen     44.2 ms  aspen     72.1 ms  aspen/C  1.63  aspen/tree  0.72  ok
+perf:   runs (ms): tree 100.5 100.2 102.0  C 45.6 44.2 44.1  aspen 71.2 72.1 74.9
+perf: the listing within 2x and -s within 2x of C aspen on both workloads
+### exit 0: tools/in-container tools/perf --bin target/release/aspen
+
+### tools/in-container tools/perf --bin target/release/aspen
+perf: tree tree v2.3.2, C aspen aspen v0.1.0, aspen aspen v0.1.0; 3 runs each, taskset -c 0-3, LC_ALL=C
+perf: wide1k    default tree      2.6 ms  C aspen      1.9 ms  aspen      2.1 ms  aspen/C  1.10  aspen/tree  0.81  ok
+perf:   runs (ms): tree 2.4 2.6 2.6  C 1.9 1.9 1.8  aspen 2.1 2.2 2.0
+perf: wide1k    -s      tree      2.4 ms  C aspen      2.2 ms  aspen      2.5 ms  aspen/C  1.14  aspen/tree  1.01  ok
+perf:   runs (ms): tree 2.4 2.6 2.4  C 2.2 2.2 2.2  aspen 2.4 2.6 2.5
+perf: tree100k  default tree     98.4 ms  C aspen     23.2 ms  aspen     39.8 ms  aspen/C  1.72  aspen/tree  0.40  ok
+perf:   runs (ms): tree 104.9 98.4 96.8  C 23.2 23.7 22.8  aspen 40.3 39.8 38.6
+perf: tree100k  -s      tree     96.5 ms  C aspen     44.5 ms  aspen     70.4 ms  aspen/C  1.58  aspen/tree  0.73  ok
+perf:   runs (ms): tree 96.3 96.8 96.5  C 44.5 43.5 44.5  aspen 70.2 70.4 71.1
+perf: the listing within 2x and -s within 2x of C aspen on both workloads
+### exit 0: tools/in-container tools/perf --bin target/release/aspen
+
+### tools/in-container tools/mem --bin target/release/aspen
+mem: tree100k [default] aspen   59864 KiB  C aspen    2560 KiB
+mem: tree100k [-s]     aspen   76756 KiB  C aspen    2564 KiB
+mem: tree100k [-J]     aspen  129064 KiB  C aspen   12684 KiB
+mem: tree100k [--du]   aspen  134904 KiB  C aspen   18700 KiB
+mem: tree100k [-pugsD] aspen  157624 KiB  C aspen    3408 KiB
+### exit 0: tools/in-container tools/mem --bin target/release/aspen
+
+### podman run --rm --userns=keep-id -u 0 -v /home/mfwolffe/lanes/ap01/aspen:/home/mfwolffe/lanes/ap01/aspen -w /home/mfwolffe/lanes/ap01/aspen docker.io/library/ubuntu:24.04 sh -c apt-get update -qq >/dev/null && apt-get install -y -qq gcc binutils clang lld >/dev/null 2>&1 && tools/mkaspen target/mkaspen && chown -R "$(stat -c %u:%g .)" target
+build: target/static/aspen
+build: target/static/aspen
+aspen v0.1.0
+aspen 724f82f5cc209f73506cc42ce541836a3497b2afd9a3a2667b10a734cb0cf493 15306624
+aspen (built twice, the same digest); stripped: 1927320 bytes, sha256 2b77dfd9da4012130898c628fcb84ebd88cd4fc43c5f36f2cb4ad2d1c0a64e34
+linked against: /usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/libc.a
+### exit 0: podman run --rm --userns=keep-id -u 0 -v /home/mfwolffe/lanes/ap01/aspen:/home/mfwolffe/lanes/ap01/aspen -w /home/mfwolffe/lanes/ap01/aspen docker.io/library/ubuntu:24.04 sh -c apt-get update -qq >/dev/null && apt-get install -y -qq gcc binutils clang lld >/dev/null 2>&1 && tools/mkaspen target/mkaspen && chown -R "$(stat -c %u:%g .)" target
+
+### tools/in-container tools/oracle --bin target/mkaspen/aspen
+oracle: the oracle is tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+oracle: aspen is /home/mfwolffe/lanes/ap01/aspen/target/mkaspen/aspen (aspen v0.1.0)
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  acl            rc 2     1276 bytes    42 lines
+  selinux        rc 2      842 bytes    42 lines
+oracle: 2904 agree / 0 differ / 32 not-yet
+### exit 0: tools/in-container tools/oracle --bin target/mkaspen/aspen
+
+### tools/in-container tools/golden --bin target/mkaspen/aspen
+golden: run.sh (exit 1), locales: C en_US.UTF-8 C.UTF-8
+  self-test(ref-vs-ref) [C]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C]: 286 cases, 0 diffs
+  self-test(ref-vs-ref) [en_US.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [en_US.UTF-8]: 286 cases, 29 diffs
+  self-test(ref-vs-ref) [C.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C.UTF-8]: 286 cases, 0 diffs
+  not-yet (en_US.UTF-8 collation, src/locale): -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aF %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aP .h* %C
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress=1 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress=-2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 4 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --charset=ascii --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --charset=ascii --compress=-3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -J --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -J --compress 3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -X --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -X --compress=-1 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -H --compress 2 --hintro %h --houtro %o %V
+  not-yet (en_US.UTF-8 collation, src/locale): --gitignore -a %G
+  not-yet (en_US.UTF-8 collation, src/locale): --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info -a %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info --charset=ascii %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info -F %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info --du %I
+  not-yet (en_US.UTF-8 collation, src/locale): --infofile %I/.info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -n -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -R -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -J --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -X --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -H . --hintro=%h --houtro=%o --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -H . --hintro=%h --houtro=%o -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -a --fromfile %F/paths.txt
+golden: run.sh matrix: 829 agree / 0 differ / 29 not-yet (29 of them v1 cases under en_US.UTF-8)
+golden: walk.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: WALK: discovery matches tree (paths + dirs, default and -a)
+golden: color.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: COLOR: matches tree (-C / env cases)
+golden: pty.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: PTY: matches tree (auto-color on a real terminal)
+golden: outfile.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: OUTFILE: -o writes the file byte-identically to tree (stdout empty)
+golden: rerun.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: RERUN: ok (-R 00Tree.html generation byte-identical at -L1; stdout+fileset+counts at -L2)
+golden: cyclic.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: CYCLIC: ok (cross-dir cycle detection deterministic + == tree, 30 inode layouts)
+golden: adversarial.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: ADVERSARIAL: hostile inputs survive + match tree (gitignore-backslash, 64k fromfile, 600k TREE_COLORS)
+golden: patterns.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: PATTERNS: slashed -P/-I match basename+path+suffix == tree 2.3.2 (streaming/-J/-X/-L/--matchdirs)
+golden: fpath.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: FPATH: -f root trailing-slash canonical == tree (root line + child paths, all renderers)
+golden: usage.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: USAGE: help/usage/bad-flag byte-identical to tree (name aside); --version ok
+golden: fdlimit.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: FDLIMIT: deep chain survives a low soft fd limit (soft raised to hard)
+golden: threads.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: THREADS: parallel stat deterministic (--threads 1 == 16 == tree); strict parse; dead-zone serial
+golden: deviations.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: DEVIATIONS: all documented deviations hold (aspen correct where tree bugs)
+golden: structural.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: STRUCT: -J/-X well-formed (balanced, single report, standalone comma)
+golden: 829 agree / 0 differ / 29 not-yet (0 skip(s), 0 report(s) on tree's undefined behaviour)
+### exit 0: tools/in-container tools/golden --bin target/mkaspen/aspen
+
+### tools/in-container tools/selftest target/release/aspen
+selftest: oracle-glyph went red on its planted difference (status 1): ok
+selftest: oracle-count went red on its planted difference (status 1): ok
+selftest: golden-glyph went red on its planted difference (status 1): ok
+selftest: fuzz-glyph went red on its planted difference (status 1): ok
+selftest: perf-slow went red on its planted difference (status 1): ok
+### exit 0: tools/in-container tools/selftest target/release/aspen
+
+### done 2026-10-21T20:49:49Z
