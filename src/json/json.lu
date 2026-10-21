@@ -117,7 +117,7 @@ pub fn begin(mut j: Json) {
     out.s(mut j.o, "[\n")
 }
 
-fn head(mut j: Json, o: opts.Opts, e: ent.Ent) {
+fn head(mut j: Json, o: opts.Opts, e: ent.Ent, lnks: List[List[byte]]) {
     out.s(mut j.o, "{{\"type\":\"")
     out.s(mut j.o, ent.type_name(e.kind))
     out.s(mut j.o, "\",\"name\":\"")
@@ -127,9 +127,9 @@ fn head(mut j: Json, o: opts.Opts, e: ent.Ent) {
         enc(mut j.o, e.nm, 1, e.nm.len)
     }
     out.c(mut j.o, 34)
-    if e.has_lnk {
+    if e.lnk >= 0 {
         out.s(mut j.o, ",\"target\":\"")
-        enc(mut j.o, e.lnk, 0, e.lnk.len)
+        enc(mut j.o, lnks[e.lnk], 0, lnks[e.lnk].len)
         out.c(mut j.o, 34)
     }
     if e.has_st {
@@ -138,8 +138,17 @@ fn head(mut j: Json, o: opts.Opts, e: ent.Ent) {
 }
 
 /// One level of the built tree (`src/render/json.c:151`); `ents` is the
-/// walk's arena, `arr` this level's indices in display order.
-pub fn level(mut j: Json, o: opts.Opts, ents: List[ent.Ent], arr: List[int], depth: int) {
+/// walk's arena, `tabs` its children lists, `lnks` its link targets,
+/// `arr` this level's indices in display order.
+pub fn level(
+    mut j: Json,
+    o: opts.Opts,
+    ents: List[ent.Ent],
+    tabs: List[List[int]],
+    lnks: List[List[byte]],
+    arr: List[int],
+    depth: int,
+) {
     let n = arr.len
     var i = 0
     while i < n {
@@ -161,12 +170,13 @@ pub fn level(mut j: Json, o: opts.Opts, ents: List[ent.Ent], arr: List[int], dep
             }
         }
         indent(mut j, depth)
-        head(mut j, o, ents[k])
-        let kids = ents[k].has_child && ents[k].child.len > 0
+        head(mut j, o, ents[k], lnks)
+        let c = ents[k].child
+        let kids = c >= 0 && tabs[c].len > 0
         let direrr = dl && ents[k].err.len > 0 && !kids
         if kids {
             out.s(mut j.o, ",\"contents\":[\n")
-            level(mut j, o, ents, ents[k].child, depth + 1)
+            level(mut j, o, ents, tabs, lnks, tabs[c], depth + 1)
             indent(mut j, depth)
             out.s(mut j.o, "]}}")
         } else if direrr {
@@ -227,6 +237,8 @@ pub fn tree(
     st: ent.Meta,
     has_st: bool,
     ents: List[ent.Ent],
+    tabs: List[List[int]],
+    lnks: List[List[byte]],
     top: List[int],
     last: bool,
 ) {
@@ -250,7 +262,7 @@ pub fn tree(
             j.fp = b
         }
         out.s(mut j.o, ",\"contents\":[\n")
-        level(mut j, o, ents, top, 1)
+        level(mut j, o, ents, tabs, lnks, top, 1)
         indent(mut j, 0)
         out.s(mut j.o, "]}}")
     } else {
