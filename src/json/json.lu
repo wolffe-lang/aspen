@@ -1,32 +1,26 @@
 //! json — `-J` (C aspen `src/render/json.c`, "faithful to tree's
 //! json.c"): the whole tree built first, then emitted as a nested array,
-//! a report object last. DEVIATION D2 is carried: after an error no
-//! later entry gets an empty contents array (`src/render/json.c:209`).
-//! `-i` (the unindented form) and `--compress` are ap01's, so the indent
-//! unit is always four spaces and every line ends with a newline.
+//! a report object last; `-i` drops the indentation and the newlines,
+//! `--compress` narrows the indent unit. DEVIATION D2 is carried: after
+//! an error no later entry gets an empty contents array
+//! (`src/render/json.c:209`).
 
-use clock
 use ent
 use info
 use opts
 use out
 
-/// The JSON renderer's state: its writer, the `-f` path stack, the zone
-/// and clock for `-D`, and the counts its report prints (the C counts in
-/// the renderer for nested formats, `src/render/json.c:160`).
+/// The JSON renderer's state: its writer, the `-f` path stack and the
+/// columns.
 pub struct Json {
     o: out.Out,
     fp: List[byte],
-    zone: clock.Zone,
-    now: int,
-    dirs: int,
-    files: int,
+    cols: info.Cols,
 }
 
 /// A renderer writing to descriptor `fd`.
-pub fn new(fd: int, take zone: clock.Zone, now: int) -> Json {
-    let z: int = 0
-    Json { o: out.to_fd(fd), fp: List[byte](), zone: zone, now: now, dirs: z, files: z }
+pub fn new(fd: int, take cols: info.Cols) -> Json {
+    Json { o: out.to_fd(fd), fp: List[byte](), cols: cols }
 }
 
 /// RFC 8259 escaping, tree's json_encode (`src/render/json.c:42`): the
@@ -34,7 +28,7 @@ pub fn new(fd: int, take zone: clock.Zone, now: int) -> Json {
 /// return and NUL, a six-character unicode escape for the other controls,
 /// a backslash before a quote or a backslash; every other byte, UTF-8
 /// included, as is.
-fn enc(mut o: out.Out, s: List[byte], from: int, to: int) {
+pub fn enc(mut o: out.Out, s: List[byte], from: int, to: int) {
     let hex = "0123456789abcdef"
     var i = from
     while i < to {
@@ -67,18 +61,39 @@ fn enc(mut o: out.Out, s: List[byte], from: int, to: int) {
     }
 }
 
-fn enc_str(mut o: out.Out, s: str) {
+fn bs(s: str) -> List[byte] {
     var b = List[byte]()
     for x in s.bytes() {
         (mut b).push(x)
     }
+    b
+}
+
+fn enc_str(mut o: out.Out, s: str) {
+    let b = bs(s)
     enc(mut o, b, 0, b.len)
 }
 
-fn indent(mut j: Json, level: int) {
+fn nl(mut j: Json, o: opts.Opts) {
+    if !o.noindent {
+        out.c(mut j.o, 10)
+    }
+}
+
+/// The indent unit (`junit`): four spaces, narrowed by `--compress`.
+fn unit(o: opts.Opts) -> str {
+    let spaces = ["    ", "   ", "  ", " ", ""]
+    spaces[o.compress_indent + (if o.remove_space then 1 else 0)]
+}
+
+fn indent(mut j: Json, o: opts.Opts, level: int) {
+    if o.noindent {
+        return
+    }
+    let u = unit(o)
     var i = 0
     while i <= level {
-        out.s(mut j.o, "    ")
+        out.s(mut j.o, u)
         i += 1
     }
 }
@@ -91,45 +106,76 @@ fn oct4(n: int) -> str {
     "{d3}{d2}{d1}{d0}"
 }
 
-/// The metadata keys (`src/render/json.c:78`): v1's mode and prot, size
-/// and time.
+/// The metadata keys (`src/render/json.c:78`).
 fn fill(mut j: Json, o: opts.Opts, st: ent.Meta) {
+    if o.inodeflag {
+        out.s(mut j.o, ",\"inode\":{st.ino}")
+    }
+    if o.devflag {
+        out.s(mut j.o, ",\"dev\":{info.int32(st.dev)}")
+    }
     if o.permflag {
         let p = info.prot(st.kind, st.mode)
         out.s(mut j.o, ",\"mode\":\"{oct4(st.mode)}\",\"prot\":\"{p}\"")
     }
+    if o.userflag {
+        let u = info.user_name(mut j.cols, st.uid)
+        out.s(mut j.o, ",\"user\":\"{u}\"")
+    }
+    if o.groupflag {
+        let g = info.group_name(mut j.cols, st.gid)
+        out.s(mut j.o, ",\"group\":\"{g}\"")
+    }
     if o.sizeflag {
-        if o.humanflag {
-            let h = info.psize(true, st.size).trim_start()
+        if o.humanflag || o.siflag {
+            let h = info.psize(o.humanflag, o.siflag, st.size).trim_start()
             out.s(mut j.o, ",\"size\":\"{h}\"")
         } else {
             out.s(mut j.o, ",\"size\":{st.size}")
         }
     }
     if o.dateflag {
-        let d = info.date(j.zone, j.now, st.mtime)
-        out.s(mut j.o, ",\"time\":\"{d}\"")
+        out.s(mut j.o, ",\"time\":\"")
+        let d = info.date_bytes(o, j.cols, if o.ctimeflag then st.ctime else st.mtime)
+        out.bytes(mut j.o, d, 0, d.len)
+        out.c(mut j.o, 34)
     }
 }
 
 /// The document's opening bracket.
-pub fn begin(mut j: Json) {
-    out.s(mut j.o, "[\n")
+pub fn begin(mut j: Json, o: opts.Opts) {
+    out.c(mut j.o, 91)
+    nl(mut j, o)
 }
 
-fn head(mut j: Json, o: opts.Opts, e: ent.Ent, lnks: List[List[byte]]) {
+fn head(mut j: Json, o: opts.Opts, a: ent.Arena, e: ent.Ent) {
     out.s(mut j.o, "{{\"type\":\"")
     out.s(mut j.o, ent.type_name(e.kind))
     out.s(mut j.o, "\",\"name\":\"")
     if o.fullpath {
         enc(mut j.o, j.fp, 0, j.fp.len)
+    } else if e.cname >= 0 {
+        enc(mut j.o, a.cnames[e.cname], 1, a.cnames[e.cname].len)
     } else {
         enc(mut j.o, e.nm, 1, e.nm.len)
     }
     out.c(mut j.o, 34)
+    if e.info >= 0 {
+        out.s(mut j.o, ",\"info\":\"")
+        let lines = a.infos[e.info]
+        var i = 0
+        while i < lines.len {
+            enc(mut j.o, lines[i], 0, lines[i].len)
+            if i + 1 < lines.len {
+                out.s(mut j.o, "\\n")
+            }
+            i += 1
+        }
+        out.c(mut j.o, 34)
+    }
     if e.lnk >= 0 {
         out.s(mut j.o, ",\"target\":\"")
-        enc(mut j.o, lnks[e.lnk], 0, lnks[e.lnk].len)
+        enc(mut j.o, a.lnks[e.lnk], 0, a.lnks[e.lnk].len)
         out.c(mut j.o, 34)
     }
     if e.has_st {
@@ -137,161 +183,178 @@ fn head(mut j: Json, o: opts.Opts, e: ent.Ent, lnks: List[List[byte]]) {
     }
 }
 
-/// One level of the built tree (`src/render/json.c:151`); `ents` is the
-/// walk's arena, `tabs` its children lists, `lnks` its link targets,
-/// `arr` this level's indices in display order.
-pub fn level(
-    mut j: Json,
-    o: opts.Opts,
-    ents: List[ent.Ent],
-    tabs: List[List[int]],
-    lnks: List[List[byte]],
-    arr: List[int],
-    depth: int,
-) {
+fn close(mut j: Json, o: opts.Opts, last: bool) {
+    if !last {
+        out.c(mut j.o, 44)
+    }
+    nl(mut j, o)
+}
+
+/// One level of the built tree (`src/render/json.c:151`), in the arena's
+/// display order; answers the directories and files it counted.
+fn level(mut j: Json, o: opts.Opts, a: ent.Arena, arr: List[int], depth: int) -> (int, int) {
+    var dirs = 0
+    var files = 0
     let n = arr.len
     var i = 0
     while i < n {
         let k = arr[i]
+        let e = copy a.ents[k]
         let last = i + 1 == n
-        let dl = ent.dir_like(ents[k])
+        let dl = ent.dir_like(e)
         if dl {
-            j.dirs += 1
+            dirs += 1 + e.cond
         } else {
-            j.files += 1
+            files += 1
         }
         let saved = j.fp.len
         if o.fullpath {
             (mut j.fp).push(47 as byte)
+            let nm = if e.cname >= 0 then copy a.cnames[e.cname] else copy e.nm
             var x = 1
-            while x < ents[k].nm.len {
-                (mut j.fp).push(ents[k].nm[x])
+            while x < nm.len {
+                (mut j.fp).push(nm[x])
                 x += 1
             }
         }
-        indent(mut j, depth)
-        head(mut j, o, ents[k], lnks)
-        let c = ents[k].child
-        let kids = c >= 0 && tabs[c].len > 0
-        let direrr = dl && ents[k].err.len > 0 && !kids
+        indent(mut j, o, depth)
+        head(mut j, o, a, e)
+        let kids = e.child >= 0 && a.kids[e.child].len > 0
+        let direrr = dl && e.err.len > 0 && !kids
         if kids {
-            out.s(mut j.o, ",\"contents\":[\n")
-            level(mut j, o, ents, tabs, lnks, tabs[c], depth + 1)
-            indent(mut j, depth)
+            out.s(mut j.o, ",\"contents\":[")
+            nl(mut j, o)
+            let (d, f) = level(mut j, o, a, a.kids[e.child], depth + 1)
+            dirs += d
+            files += f
+            indent(mut j, o, depth)
             out.s(mut j.o, "]}}")
+            close(mut j, o, last)
         } else if direrr {
+            // tree closes an unreadable or over-limit directory's error
+            // with one fixed unit; a "recursive, not followed" link with
+            // the entry's own indent (`src/render/json.c:196`)
             out.s(mut j.o, ",\"contents\":[{{\"error\": \"")
-            out.s(mut j.o, ents[k].err)
-            out.s(mut j.o, "\"}}    ]}}")
+            out.s(mut j.o, e.err)
+            out.s(mut j.o, "\"}}")
+            if e.flags & ent.f_recursive() != 0 {
+                indent(mut j, o, depth)
+            } else if !o.noindent {
+                out.s(mut j.o, unit(o))
+            }
+            out.s(mut j.o, "]}}")
+            close(mut j, o, last)
         } else {
             out.c(mut j.o, 125)
+            close(mut j, o, last)
         }
-        if !last {
-            out.c(mut j.o, 44)
-        }
-        out.c(mut j.o, 10)
-        if o.fullpath {
-            var cut = List[byte]()
-            var x = 0
-            while x < saved {
-                (mut cut).push(j.fp[x])
-                x += 1
-            }
-            j.fp = cut
+        while j.fp.len > saved {
+            let _ = (mut j.fp).pop() else 0 as byte
         }
         out.maybe(mut j.o)
         i += 1
     }
+    (dirs, files)
 }
 
-/// A root that could not be opened (`src/render/json.c:269`): typed by
-/// its `lstat` when it has one, "unknown" when it does not exist.
-pub fn failed_root(mut j: Json, o: opts.Opts, root: str, st: ent.Meta, has_st: bool, last: bool) {
-    indent(mut j, 0)
-    let ft = if has_st then ent.type_name(st.kind) else "unknown"
-    out.s(mut j.o, "{{\"type\":\"")
-    out.s(mut j.o, ft)
-    out.s(mut j.o, "\",\"name\":\"")
-    enc_str(mut j.o, root)
-    out.c(mut j.o, 34)
-    if has_st {
-        fill(mut j, o, st)
-    }
-    out.s(mut j.o, ",\"contents\":[{{\"error\": \"error opening dir\"}}\n")
-    indent(mut j, 0)
-    out.s(mut j.o, "]}}")
-    if !last {
-        out.c(mut j.o, 44)
-    }
-    out.c(mut j.o, 10)
-}
-
-/// An opened root and its built tree (`src/render/json.c:294`), typed by
-/// its `lstat` (`rkind`): the root counts as a directory, and has a
-/// contents array, only when it has at least one entry.
+/// One root (`src/render/json.c:269`): an unopened one typed by its
+/// `lstat` ("unknown" when there is none) with the error as its contents;
+/// an opened one typed by its `lstat` too (a symlink to a directory is
+/// "link", as tree has it; docs/MAP.md §5), its contents only when it has
+/// entries, or the `--filelimit` error. tree shows a root's inode and
+/// device as 0. Answers the directories and files counted.
 pub fn tree(
     mut j: Json,
     o: opts.Opts,
     root: str,
-    rkind: int,
-    st: ent.Meta,
-    has_st: bool,
-    ents: List[ent.Ent],
-    tabs: List[List[int]],
-    lnks: List[List[byte]],
+    st0: ent.Meta,
+    has: bool,
+    opened: bool,
+    limit: str,
+    a: ent.Arena,
     top: List[int],
     last: bool,
-) {
-    indent(mut j, 0)
-    let rtype = if rkind != 1 then ent.type_name(rkind) else "directory"
+) -> (int, int) {
+    var st = st0
+    st.ino = 0
+    st.dev = 0
+    indent(mut j, o, 0)
+    if !opened {
+        let ft = if has then ent.type_name(st.kind) else "unknown"
+        out.s(mut j.o, "{{\"type\":\"")
+        out.s(mut j.o, ft)
+        out.s(mut j.o, "\",\"name\":\"")
+        enc_str(mut j.o, root)
+        out.c(mut j.o, 34)
+        if has {
+            fill(mut j, o, st)
+        }
+        out.s(mut j.o, ",\"contents\":[{{\"error\": \"error opening dir\"}}")
+        nl(mut j, o)
+        indent(mut j, o, 0)
+        out.s(mut j.o, "]}}")
+        close(mut j, o, last)
+        return (0, 0)
+    }
+    let rtype = if st.kind == 1 || st.kind == 2 then "directory" else ent.type_name(st.kind)
     out.s(mut j.o, "{{\"type\":\"")
     out.s(mut j.o, rtype)
     out.s(mut j.o, "\",\"name\":\"")
     enc_str(mut j.o, root)
     out.c(mut j.o, 34)
-    if has_st {
+    if has {
         fill(mut j, o, st)
     }
+    if limit.len > 0 {
+        out.s(mut j.o, ",\"contents\":[{{\"error\": \"")
+        enc_str(mut j.o, limit)
+        out.s(mut j.o, "\"}}")
+        nl(mut j, o)
+        indent(mut j, o, 0)
+        out.s(mut j.o, "]}}")
+        close(mut j, o, last)
+        return (1, 0)
+    }
+    var dirs = 0
+    var files = 0
     if top.len > 0 {
-        j.dirs += 1
+        dirs += 1
         if o.fullpath {
-            var b = List[byte]()
-            for x in root.bytes() {
-                (mut b).push(x)
-            }
-            j.fp = b
+            j.fp = bs(root)
         }
-        out.s(mut j.o, ",\"contents\":[\n")
-        level(mut j, o, ents, tabs, lnks, top, 1)
-        indent(mut j, 0)
+        out.s(mut j.o, ",\"contents\":[")
+        nl(mut j, o)
+        let (d, f) = level(mut j, o, a, top, 1)
+        dirs += d
+        files += f
+        indent(mut j, o, 0)
         out.s(mut j.o, "]}}")
     } else {
         out.c(mut j.o, 125)
     }
-    if !last {
-        out.c(mut j.o, 44)
-    }
-    out.c(mut j.o, 10)
+    close(mut j, o, last)
     out.maybe(mut j.o)
+    (dirs, files)
 }
 
 /// The report object (`src/render/json.c:242`).
-pub fn report(mut j: Json, o: opts.Opts, size: int) {
+pub fn report(mut j: Json, o: opts.Opts, dirs: int, files: int, size: int) {
     out.c(mut j.o, 44)
-    indent(mut j, 0)
+    indent(mut j, o, 0)
     out.s(mut j.o, "{{\"type\":\"report\"")
     if o.duflag {
         out.s(mut j.o, ",\"size\":{size}")
     }
-    out.s(mut j.o, ",\"directories\":{j.dirs}")
+    out.s(mut j.o, ",\"directories\":{dirs}")
     if !o.dirsonly {
-        out.s(mut j.o, ",\"files\":{j.files}")
+        out.s(mut j.o, ",\"files\":{files}")
     }
     out.c(mut j.o, 125)
 }
 
 /// The document's close, and the flush.
-pub fn end(mut j: Json) {
-    out.s(mut j.o, "\n]\n")
+pub fn end(mut j: Json, o: opts.Opts) {
+    nl(mut j, o)
+    out.s(mut j.o, "]\n")
     out.flush(mut j.o)
 }
