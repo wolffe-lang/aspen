@@ -1,0 +1,301 @@
+//! xml — `-X` (C aspen `src/render/xml.c`, tree's xml.c): the whole tree
+//! built first, then emitted as nested elements named by type, the
+//! metadata as attributes, a `<report>` last; the declaration names the
+//! charset when there is one. `-i` drops the indentation and the
+//! newlines, `--compress` narrows the indent unit.
+
+use ent
+use html
+use info
+use opts
+use out
+
+/// The XML renderer's state: its writer, the charset for the
+/// declaration, the `-f` path stack and the columns.
+pub struct Xml {
+    o: out.Out,
+    has_cs: bool,
+    cs: str,
+    fp: List[byte],
+    cols: info.Cols,
+}
+
+/// A renderer writing to descriptor `fd`.
+pub fn new(fd: int, has_cs: bool, cs: str, take cols: info.Cols) -> Xml {
+    Xml { o: out.to_fd(fd), has_cs: has_cs, cs: cs, fp: List[byte](), cols: cols }
+}
+
+fn bs(s: str) -> List[byte] {
+    var b = List[byte]()
+    for x in s.bytes() {
+        (mut b).push(x)
+    }
+    b
+}
+
+fn nl(mut x: Xml, o: opts.Opts) {
+    if !o.noindent {
+        out.c(mut x.o, 10)
+    }
+}
+
+fn indent(mut x: Xml, o: opts.Opts, level: int) {
+    if o.noindent {
+        return
+    }
+    let spaces = ["    ", "   ", "  ", " ", ""]
+    let u = spaces[o.compress_indent + (if o.remove_space then 1 else 0)]
+    var i = 0
+    while i <= level {
+        out.s(mut x.o, u)
+        i += 1
+    }
+}
+
+fn oct4(n: int) -> str {
+    "{n / 512 % 8}{n / 64 % 8}{n / 8 % 8}{n % 8}"
+}
+
+/// The metadata attributes (`src/render/xml.c:52`); the size is always
+/// the byte count here, `-h` or not.
+fn fill(mut x: Xml, o: opts.Opts, st: ent.Meta) {
+    if o.inodeflag {
+        out.s(mut x.o, " inode=\"{st.ino}\"")
+    }
+    if o.devflag {
+        out.s(mut x.o, " dev=\"{info.int32(st.dev)}\"")
+    }
+    if o.permflag {
+        out.s(mut x.o, " mode=\"{oct4(st.mode)}\" prot=\"{info.prot(st.kind, st.mode)}\"")
+    }
+    if o.userflag {
+        let u = info.user_name(mut x.cols, st.uid)
+        out.s(mut x.o, " user=\"{u}\"")
+    }
+    if o.groupflag {
+        let g = info.group_name(mut x.cols, st.gid)
+        out.s(mut x.o, " group=\"{g}\"")
+    }
+    if o.sizeflag {
+        out.s(mut x.o, " size=\"{st.size}\"")
+    }
+    if o.dateflag {
+        out.s(mut x.o, " time=\"")
+        let d = info.date_bytes(o, x.cols, if o.ctimeflag then st.ctime else st.mtime)
+        out.bytes(mut x.o, d, 0, d.len)
+        out.c(mut x.o, 34)
+    }
+}
+
+/// The declaration and `<tree>` (`src/render/xml.c:183`).
+pub fn begin(mut x: Xml, o: opts.Opts) {
+    out.s(mut x.o, "<?xml version=\"1.0\"")
+    if x.has_cs {
+        out.s(mut x.o, " encoding=\"")
+        out.s(mut x.o, x.cs)
+        out.c(mut x.o, 34)
+    }
+    out.s(mut x.o, "?>")
+    nl(mut x, o)
+    out.s(mut x.o, "<tree>")
+    nl(mut x, o)
+}
+
+fn head(mut x: Xml, o: opts.Opts, a: ent.Arena, e: ent.Ent) {
+    out.c(mut x.o, 60)
+    out.s(mut x.o, ent.type_name(e.kind))
+    out.s(mut x.o, " name=\"")
+    if o.fullpath {
+        html.encode(mut x.o, x.fp, 0, x.fp.len)
+    } else if e.cname >= 0 {
+        html.encode(mut x.o, a.cnames[e.cname], 1, a.cnames[e.cname].len)
+    } else {
+        html.encode(mut x.o, e.nm, 1, e.nm.len)
+    }
+    out.c(mut x.o, 34)
+    if e.info >= 0 {
+        out.s(mut x.o, " info=\"")
+        let lines = a.infos[e.info]
+        var i = 0
+        while i < lines.len {
+            html.encode(mut x.o, lines[i], 0, lines[i].len)
+            if i + 1 < lines.len {
+                nl(mut x, o)
+            }
+            i += 1
+        }
+        out.c(mut x.o, 34)
+    }
+    if e.lnk >= 0 {
+        out.s(mut x.o, " target=\"")
+        html.encode(mut x.o, a.lnks[e.lnk], 0, a.lnks[e.lnk].len)
+        out.c(mut x.o, 34)
+    }
+    if e.has_st {
+        fill(mut x, o, e.st)
+    }
+    out.c(mut x.o, 62)
+}
+
+fn close_tag(mut x: Xml, o: opts.Opts, tag: str) {
+    out.s(mut x.o, "</")
+    out.s(mut x.o, tag)
+    out.c(mut x.o, 62)
+    nl(mut x, o)
+}
+
+/// One level (`src/render/xml.c:117`); answers the directories and files
+/// it counted.
+fn level(mut x: Xml, o: opts.Opts, a: ent.Arena, arr: List[int], depth: int) -> (int, int) {
+    var dirs = 0
+    var files = 0
+    for k in arr {
+        let e = copy a.ents[k]
+        let dl = ent.dir_like(e)
+        if dl {
+            dirs += 1 + e.cond
+        } else {
+            files += 1
+        }
+        let tag = ent.type_name(e.kind)
+        let kids = e.child >= 0 && a.kids[e.child].len > 0
+        let direrr = dl && e.err.len > 0 && !kids
+        let saved = x.fp.len
+        if o.fullpath {
+            (mut x.fp).push(47 as byte)
+            let nm = if e.cname >= 0 then copy a.cnames[e.cname] else copy e.nm
+            var i = 1
+            while i < nm.len {
+                (mut x.fp).push(nm[i])
+                i += 1
+            }
+        }
+        indent(mut x, o, depth)
+        head(mut x, o, a, e)
+        if kids {
+            nl(mut x, o)
+            let (d, f) = level(mut x, o, a, a.kids[e.child], depth + 1)
+            dirs += d
+            files += f
+            indent(mut x, o, depth)
+            close_tag(mut x, o, tag)
+        } else {
+            if direrr {
+                out.s(mut x.o, "<error>")
+                out.s(mut x.o, e.err)
+                out.s(mut x.o, "</error>")
+                // a "recursive, not followed" link closes at its own
+                // indent; an unreadable directory at none
+                if e.flags & ent.f_recursive() != 0 {
+                    indent(mut x, o, depth)
+                }
+            }
+            close_tag(mut x, o, tag)
+        }
+        while x.fp.len > saved {
+            let _ = (mut x.fp).pop() else 0 as byte
+        }
+        out.maybe(mut x.o)
+    }
+    (dirs, files)
+}
+
+/// One root (`src/render/xml.c:248`), typed as `-J` types it; answers
+/// the directories and files counted.
+pub fn tree(
+    mut x: Xml,
+    o: opts.Opts,
+    root: str,
+    st0: ent.Meta,
+    has: bool,
+    opened: bool,
+    limit: str,
+    a: ent.Arena,
+    top: List[int],
+    last: bool,
+) -> (int, int) {
+    let _ = last
+    var st = st0
+    st.ino = 0
+    st.dev = 0
+    let rb = bs(root)
+    indent(mut x, o, 0)
+    if !opened {
+        let ft = if has then ent.type_name(st.kind) else "unknown"
+        out.c(mut x.o, 60)
+        out.s(mut x.o, ft)
+        out.s(mut x.o, " name=\"")
+        html.encode(mut x.o, rb, 0, rb.len)
+        out.c(mut x.o, 34)
+        if has {
+            fill(mut x, o, st)
+        }
+        out.s(mut x.o, "><error>error opening dir</error>")
+        nl(mut x, o)
+        indent(mut x, o, 0)
+        close_tag(mut x, o, ft)
+        return (0, 0)
+    }
+    let rtag = if st.kind == 1 || st.kind == 2 then "directory" else ent.type_name(st.kind)
+    out.c(mut x.o, 60)
+    out.s(mut x.o, rtag)
+    out.s(mut x.o, " name=\"")
+    html.encode(mut x.o, rb, 0, rb.len)
+    out.c(mut x.o, 34)
+    if has {
+        fill(mut x, o, st)
+    }
+    if limit.len > 0 {
+        out.s(mut x.o, "><error>")
+        out.s(mut x.o, limit)
+        out.s(mut x.o, "</error>")
+        nl(mut x, o)
+        indent(mut x, o, 0)
+        close_tag(mut x, o, rtag)
+        return (1, 0)
+    }
+    out.c(mut x.o, 62)
+    nl(mut x, o)
+    var dirs = 0
+    if top.len > 0 {
+        dirs = 1
+    }
+    if o.fullpath {
+        x.fp = copy rb
+    }
+    let (d, f) = level(mut x, o, a, top, 1)
+    indent(mut x, o, 0)
+    close_tag(mut x, o, rtag)
+    out.maybe(mut x.o)
+    (dirs + d, f)
+}
+
+/// The report (`src/render/xml.c:202`).
+pub fn report(mut x: Xml, o: opts.Opts, dirs: int, files: int, size: int) {
+    indent(mut x, o, 0)
+    out.s(mut x.o, "<report>")
+    nl(mut x, o)
+    if o.duflag {
+        indent(mut x, o, 1)
+        out.s(mut x.o, "<size>{size}</size>")
+        nl(mut x, o)
+    }
+    indent(mut x, o, 1)
+    out.s(mut x.o, "<directories>{dirs}</directories>")
+    nl(mut x, o)
+    if !o.dirsonly {
+        indent(mut x, o, 1)
+        out.s(mut x.o, "<files>{files}</files>")
+        nl(mut x, o)
+    }
+    indent(mut x, o, 0)
+    out.s(mut x.o, "</report>")
+    nl(mut x, o)
+}
+
+/// `</tree>`, and the flush.
+pub fn end(mut x: Xml, o: opts.Opts) {
+    out.s(mut x.o, "</tree>")
+    nl(mut x, o)
+    out.flush(mut x.o)
+}
