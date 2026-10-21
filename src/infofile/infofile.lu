@@ -1,0 +1,127 @@
+//! infofile — `--info` and `--infofile` (C aspen `src/info.c`, tree's
+//! info.c): `.info` files of `#` comments, pattern lines, and the
+//! tab-indented description lines that follow them. A stack like
+//! gitignore's: each directory's `.info` pushed on the way down, under
+//! them an explicit `--infofile` and, with `--info`, tree's global file.
+
+use gitignore
+use glob
+
+/// One comment: its patterns and its description lines.
+pub struct Comment {
+    pats: List[gitignore.Pat],
+    desc: List[List[byte]],
+}
+
+/// One loaded file: the path its patterns are relative to (the
+/// directory of a `.info`, the file itself for an explicit one, as the
+/// C has it) and its comments.
+pub struct Info {
+    base: List[byte],
+    comments: List[Comment],
+}
+
+fn bytes_of(s: str) -> List[byte] {
+    var b = List[byte]()
+    for x in s.bytes() {
+        (mut b).push(x)
+    }
+    b
+}
+
+fn parse(take base: List[byte], text: List[byte]) -> Info {
+    var inf = Info { base: base, comments: List[Comment]() }
+    var pats = List[gitignore.Pat]()
+    var desc = List[List[byte]]()
+    for raw in gitignore.lines(text) {
+        if raw.len > 0 && raw[0] as int == 35 {
+            continue
+        }
+        let t = gitignore.trim(raw)
+        if t.len == 0 {
+            continue
+        }
+        if t[0] as int == 9 {
+            if desc.len < 4096 {
+                (mut desc).push(t[1..t.len])
+            }
+        } else {
+            if desc.len > 0 {
+                if pats.len > 0 {
+                    (mut inf.comments).push(Comment { pats: pats, desc: desc })
+                }
+                pats = List[gitignore.Pat]()
+                desc = List[List[byte]]()
+            }
+            (mut pats).push(gitignore.new_pat(t, 0))
+        }
+    }
+    if pats.len > 0 {
+        (mut inf.comments).push(Comment { pats: pats, desc: desc })
+    }
+    inf
+}
+
+/// `<dir>/.info`, when it can be read (`src/info.c:84`).
+pub fn load_dir(dir: str) -> (bool, Info) {
+    let text = fs_read_bytes("{dir}/.info") else |_| {
+        return (false, Info { base: List[byte](), comments: List[Comment]() })
+    }
+    (true, parse(take bytes_of(dir), text))
+}
+
+/// An explicit info file (`--infofile`, tree's global one).
+pub fn load_file(path: str) -> (bool, Info) {
+    let text = fs_read_bytes(path) else |_| {
+        return (false, Info { base: List[byte](), comments: List[Comment]() })
+    }
+    (true, parse(take bytes_of(path), text))
+}
+
+/// The description lines for the entry at `path` (its name from
+/// `nfrom`), the comment's index pair (file, comment) or (-1, -1)
+/// (`src/info.c:127`): a pattern matches the path, or the name when
+/// `top` (the entry's own directory has a `.info`; only for the newest
+/// file), or the path against the pattern under the file's base.
+pub fn check(
+    stack: List[Info],
+    path: List[byte],
+    nfrom: int,
+    top0: bool,
+    isdir: bool,
+    ic: bool,
+) -> (int, int) {
+    var top = top0
+    var k = stack.len - 1
+    while k >= 0 {
+        var ci = 0
+        while ci < stack[k].comments.len {
+            for p in stack[k].comments[ci].pats {
+                if glob.patmatch(path, 0, path.len, p.pat, 0, p.pat.len, isdir, ic) == 1 {
+                    return (k, ci)
+                }
+                if top &&
+                    glob.patmatch(path, nfrom, path.len, p.pat, 0, p.pat.len, isdir, ic) == 1 {
+                    return (k, ci)
+                }
+                var full = copy stack[k].base
+                (mut full).push(47 as byte)
+                for x in p.pat {
+                    (mut full).push(x)
+                }
+                if glob.patmatch(path, 0, path.len, full, 0, full.len, isdir, ic) == 1 {
+                    return (k, ci)
+                }
+            }
+            ci += 1
+        }
+        top = false
+        k -= 1
+    }
+    (-1, -1)
+}
+
+/// An info file with no comments.
+pub fn empty() -> Info {
+    Info { base: List[byte](), comments: List[Comment]() }
+}
