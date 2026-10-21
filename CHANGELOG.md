@@ -15,7 +15,8 @@ The rest of C aspen's surface at `aspen.pin` (`944a398`), ported from its
   `-x`, `-R`'s `00Tree.html` files (D6, D8).
 - The columns and sorts: `-u`/`-g` (`/etc/passwd`, `/etc/group`, and
   macOS's `id` for an account its files do not hold), `--inodes` and
-  `--device` (D4), `--si`, `--timefmt` (aspen's own strftime), `-c`, `-v`
+  `--device` (D4), `--si`, `--timefmt` (aspen's own strftime, in the
+  host C library's dialect: glibc's on linux, BSD's on macOS), `-c`, `-v`
   and `--sort`, `-U`, `--filesfirst`, `-q`, `-N`, `-Q`, `--metafirst`,
   `--opt-toggle`.
 - Colour: `-C`, `LS_COLORS`/`TREE_COLORS`/`CLICOLOR`/`CLICOLOR_FORCE`/
