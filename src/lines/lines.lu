@@ -1,0 +1,255 @@
+//! lines — the indentation line sets (C aspen `src/charset.c`, whose
+//! names and connector forms are tree 2.3.2's table, `src/charset.c:7`).
+//!
+//! v1 draws the default width only (`--compress` is ap01's), so each set
+//! is its three widest connectors. They are BYTES: most of the table's
+//! sets are not UTF-8 (CP437's `\263`, Shift_JIS, …) and a wolf `str`
+//! cannot hold them. Selection is `src/charset.c:143`'s: `-A` is ANSI;
+//! else `$TREE_CHARSET`, else `UTF-8` in a UTF-8 locale, matched without
+//! regard to case against the table's names; else the ASCII fallback.
+//! (`--charset` and `-S`, which name a set on the command line, are
+//! ap01's.)
+
+/// One line set: the continuing-ancestor glyph, the branch, the corner.
+pub struct Lines {
+    vert: List[byte],
+    vleft: List[byte],
+    corner: List[byte],
+}
+
+fn b(xs: List[int]) -> List[byte] {
+    var out = List[byte]()
+    for x in xs {
+        (mut out).push(x as byte)
+    }
+    out
+}
+
+fn mk(v: List[int], l: List[int], c: List[int]) -> Lines {
+    Lines { vert: b(v), vleft: b(l), corner: b(c) }
+}
+
+/// `"|  "`, `"|--"`, `` "`--" `` (`src/charset.c:63`, LD_ASCII_BT): the
+/// fallback, VISCII and the windows sets.
+pub fn ascii() -> Lines {
+    mk([124, 32, 32], [124, 45, 45], [96, 45, 45])
+}
+
+/// The VT100 alternate-character-set hack (`-A`, `src/charset.c:73`).
+pub fn ansi() -> Lines {
+    mk(
+        [27, 40, 48, 120, 32, 32, 27, 40, 66],
+        [27, 40, 48, 116, 113, 113, 27, 40, 66],
+        [27, 40, 48, 109, 113, 113, 27, 40, 66],
+    )
+}
+
+/// `│` and two NO-BREAK SPACEs, `├──`, `└──` (`src/charset.c:96`).
+pub fn utf8() -> Lines {
+    mk(
+        [226, 148, 130, 194, 160, 194, 160],
+        [226, 148, 156, 226, 148, 128, 226, 148, 128],
+        [226, 148, 148, 226, 148, 128, 226, 148, 128],
+    )
+}
+
+fn ascii_plus() -> Lines {
+    // "|  ", "|--", "&middot;--" (LD_ASCII_PLUS, `src/charset.c:61`)
+    mk([124, 32, 32], [124, 45, 45], [38, 109, 105, 100, 100, 111, 116, 59, 45, 45])
+}
+
+fn ibm() -> Lines {
+    mk([179, 32, 32], [195, 196, 196], [192, 196, 196])
+}
+
+fn lower(s: str) -> str {
+    s.lower()
+}
+
+fn any_is(name: str, names: List[str]) -> bool {
+    for n in names {
+        if lower(n) == name {
+            return true
+        }
+    }
+    false
+}
+
+/// The set for charset `cs` (any case), or the ASCII fallback.
+pub fn for_charset(cs: str) -> Lines {
+    let n = lower(cs)
+    if any_is(n, ["ANSI"]) {
+        return ansi()
+    }
+    if any_is(
+        n,
+        [
+            "ISO-8859-1",
+            "ISO-8859-1:1987",
+            "ISO_8859-1",
+            "latin1",
+            "l1",
+            "IBM819",
+            "CP819",
+            "csISOLatin1",
+            "ISO-8859-3",
+            "ISO_8859-3:1988",
+            "ISO_8859-3",
+            "latin3",
+            "ls",
+            "csISOLatin3",
+        ],
+    ) {
+        return ascii_plus()
+    }
+    if any_is(
+        n,
+        [
+            "ISO-8859-7",
+            "ISO_8859-7:1987",
+            "ISO_8859-7",
+            "ELOT_928",
+            "ECMA-118",
+            "greek",
+            "greek8",
+            "csISOLatinGreek",
+            "ISO-8859-8",
+            "ISO_8859-8:1988",
+            "iso-ir-138",
+            "ISO_8859-8",
+            "hebrew",
+            "csISOLatinHebrew",
+            "ISO-8859-9",
+            "ISO_8859-9:1989",
+            "iso-ir-148",
+            "ISO_8859-9",
+            "latin5",
+            "l5",
+            "csISOLatin5",
+        ],
+    ) {
+        return ascii_plus()
+    }
+    if any_is(n, ["Shift_JIS", "MS_Kanji", "csShiftJIS"]) {
+        return mk(
+            [132, 160, 32, 32],
+            [132, 165, 132, 159, 132, 159],
+            [132, 164, 132, 159, 132, 159],
+        )
+    }
+    if any_is(
+        n,
+        ["EUC-JP", "Extended_UNIX_Code_Packed_Format_for_Japanese", "csEUCPkdFmtJapanese"],
+    ) {
+        return mk(
+            [168, 162, 32, 32],
+            [168, 167, 168, 161, 168, 161],
+            [168, 166, 168, 161, 168, 161],
+        )
+    }
+    if any_is(n, ["EUC-KR", "csEUCKR"]) {
+        return mk(
+            [166, 162, 32, 32],
+            [166, 167, 166, 161, 166, 161],
+            [166, 166, 166, 161, 166, 161],
+        )
+    }
+    if any_is(n, ["ISO-2022-JP", "csISO2022JP", "ISO-2022-JP-2", "csISO2022JP2"]) {
+        return mk(
+            [27, 36, 66, 40, 34, 27, 40, 66, 32, 32],
+            [27, 36, 66, 40, 39, 27, 36, 66, 40, 33, 27, 36, 66, 40, 33, 27, 40, 66],
+            [27, 36, 66, 40, 38, 27, 36, 66, 40, 33, 27, 36, 66, 40, 33, 27, 40, 66],
+        )
+    }
+    if any_is(
+        n,
+        [
+            "IBM437",
+            "cp437",
+            "437",
+            "csPC8CodePage437",
+            "IBM852",
+            "cp852",
+            "852",
+            "csPCp852",
+            "IBM863",
+            "cp863",
+            "863",
+            "csIBM863",
+            "IBM855",
+            "cp855",
+            "855",
+            "csIBM855",
+            "IBM865",
+            "cp865",
+            "865",
+            "csIBM865",
+            "IBM866",
+            "cp866",
+            "866",
+            "csIBM866",
+        ],
+    ) {
+        return ibm()
+    }
+    if any_is(
+        n,
+        [
+            "IBM850",
+            "cp850",
+            "850",
+            "csPC850Multilingual",
+            "IBM00858",
+            "CCSID00858",
+            "CP00858",
+            "PC-Multilingual-850+euro",
+        ],
+    ) {
+        return ibm()
+    }
+    if any_is(n, ["IBM869", "cp869", "869", "cp-gr", "csIBM869"]) {
+        return ibm()
+    }
+    if any_is(n, ["GB2312", "csGB2312"]) {
+        return mk(
+            [169, 166, 32, 32],
+            [169, 192, 169, 164, 169, 164],
+            [169, 184, 169, 164, 169, 164],
+        )
+    }
+    if any_is(n, ["UTF-8", "utf8"]) {
+        return utf8()
+    }
+    if any_is(n, ["Big5", "csBig5"]) {
+        return mk(
+            [162, 120, 32, 32],
+            [162, 117, 162, 119, 162, 119],
+            [162, 124, 162, 119, 162, 119],
+        )
+    }
+    if any_is(n, ["KOI8-R", "csKOI8R", "KOI8-U"]) {
+        return mk([129, 32, 32], [134, 128, 128], [132, 128, 128])
+    }
+    ascii()
+}
+
+/// `src/charset.c:143`: `-A`, else `$TREE_CHARSET`, else UTF-8 in a
+/// UTF-8 locale, else ASCII.
+pub fn pick(ansilines: bool, utf8_locale: bool) -> Lines {
+    if ansilines {
+        return ansi()
+    }
+    // set but empty is still set: it names no charset, so ASCII
+    var have = true
+    let cs = env_get("TREE_CHARSET") else |_| {
+        have = false
+        ""
+    }
+    if have {
+        return for_charset(cs)
+    }
+    if utf8_locale {
+        return utf8()
+    }
+    ascii()
+}
