@@ -364,10 +364,11 @@ runner's clang and libc.a) reproduces its own digest, stripped
 
 ### 6.10 CI runs
 
-- PR #4's `tier pr` runs, every one green: 39656603754 (`ad23a3a`),
-  39658829070 (`d9f1857`), 39661953386 (`e26c687`), 39669102889
-  (`83a00a4`), 39672434557 (`5c5bc72`: oracle 2,904 / 0 / 32 native and
-  release, golden 829 / 0 / 29, fuzz 400 runs 0 differences, aspdiff 44
+- PR #4's `tier pr` runs, every one green but 39658068654 (`06817db`),
+  cancelled by the next push before it finished: 39656603754 (`ad23a3a`),
+  39658829070 (`d9f1857`), 39661953386 (`e26c687`), 39667357973
+  (`2e6a394`), 39669102889 (`83a00a4`), 39672434557 (`5c5bc72`: oracle
+  2,904 / 0 / 32 native and release, golden 829 / 0 / 29, fuzz 400 runs 0 differences, aspdiff 44
   / 0, collation 29 / 29 by collation alone, perf 1.14× 1.71× 1.23×
   1.53×, the static build and its oracle, selftest).
 - macOS, by partial dispatch (`-f jobs=macos`): 39662338385 (`e26c687`)
