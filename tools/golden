@@ -1,0 +1,139 @@
+#!/bin/sh
+# golden — C aspen's golden suite, the oracle of record (ruling #103), run as
+# it is against the wolf binary.
+#
+#   tools/golden [--bin ASPEN] [--c-aspen DIR]
+#
+# The pinned C aspen (aspen.pin; tools/fetch-c-aspen) is copied to a private
+# directory, its files unedited; the wolf aspen is put where its scripts
+# look (./aspen) and the distribution's tree 2.3.2 where build-ref.sh looks
+# first (tests/.work/ref/tree-2.3.2), so nothing clones or builds tree's
+# source. Then each script that exercises v1 runs as it is:
+#
+#   run.sh         the case matrix, in C, en_US.UTF-8 and C.UTF-8
+#   walk.sh        discovery (via C aspen's --asp-debug-walk hook)
+#   outfile.sh     -o FILE        fpath.sh     -f roots
+#   patterns.sh    -P/-I paths    usage.sh     --help and bad command lines
+#   deviations.sh  the law where C aspen and tree disagree
+#   structural.sh  -J well-formed fdlimit.sh   a 250-deep chain
+#
+# Each script's reports are classed: a report about a v1 flag set in the C
+# or C.UTF-8 locale must not exist (a STOP); one about a v2 flag, or any
+# under en_US.UTF-8 (whose strcoll order v1 does not carry; src/locale), is
+# "not yet". For run.sh, every case is counted: N agree / M differ / K
+# not-yet. The other scripts' failing reports are classed the same way.
+# Prints the counts; exit 1 when a v1 report exists, 2 when it cannot run.
+#
+# Run it in the oracle's container, as a non-root user.
+set -u
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+bin=$ASPEN_ROOT/target/release/aspen
+csrc=$ASPEN_ROOT/.oracle/c-aspen
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --bin) bin=$2; shift 2 ;;
+    --c-aspen) csrc=$2; shift 2 ;;
+    *) echo "golden: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+case "$bin" in /*) ;; *) bin=$(pwd)/$bin ;; esac
+[ -x "$bin" ] || { echo "golden: no aspen at $bin" >&2; exit 2; }
+[ -f "$csrc/tests/golden/run.sh" ] || { echo "golden: no C aspen at $csrc (tools/fetch-c-aspen)" >&2; exit 2; }
+tv=$(tree --version 2>/dev/null | head -1)
+case "$tv" in
+"tree v2.3.2 "*) ;;
+*) echo "golden: REFUSED — tree is '$tv', the oracle is tree v2.3.2" >&2; exit 2 ;;
+esac
+. "$ASPEN_ROOT/tools/lib-classify.sh"
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/aspen-golden.XXXXXX") || exit 2
+trap 'chmod -R u+rwx "$work" 2>/dev/null; rm -rf "$work"' EXIT INT TERM
+g=$work/c-aspen
+mkdir -p "$g"
+(cd "$csrc" && tar -cf - --exclude=.git --exclude=./aspen --exclude=./asp --exclude=./tests/.work --exclude='*.o' --exclude='*.d' .) | (cd "$g" && tar -xf -)
+cp "$bin" "$g/aspen"
+mkdir -p "$g/tests/.work/ref"
+cp "$(command -v tree)" "$g/tests/.work/ref/tree-2.3.2"
+cd "$g" || exit 2
+
+agree=0
+differ=0
+notyet=0
+coll=0
+
+# --- run.sh: every case of the matrix ------------------------------------
+sh tests/golden/run.sh >"$work/run.out" 2>"$work/run.err"
+runrc=$?
+cases=$(sed -n "/^CASES='/,/'\$/p" tests/golden/run.sh | sed "1s/^CASES='//; \$s/'\$//")
+locales=$(sed -n 's/^GOLDEN: locales = //p' "$work/run.out" "$work/run.err" | head -1)
+echo "golden: run.sh (exit $runrc), locales: $locales"
+grep -E '^(self-test|parity)' "$work/run.err" | sed 's/^/  /'
+nl='
+'
+oldifs=$IFS
+for lc in $locales; do
+    IFS=$nl
+    for c in $cases; do
+        IFS=$oldifs
+        [ -n "$c" ] || continue
+        cls=$(classify "$c")
+        if grep -qxF "  DIFF [parity(aspen-vs-ref)/$lc]: $c" "$work/run.out"; then
+            if [ "$cls" = v1 ] && [ "$lc" != en_US.UTF-8 ] && [ "$lc" != en_US.utf8 ]; then
+                differ=$((differ + 1))
+                echo "  DIFF v1 [$lc]: $c"
+            else
+                notyet=$((notyet + 1))
+                if [ "$cls" = v1 ]; then
+                    coll=$((coll + 1))
+                    echo "  not-yet (en_US.UTF-8 collation, src/locale): $c"
+                fi
+            fi
+        else
+            agree=$((agree + 1))
+        fi
+        IFS=$nl
+    done
+    IFS=$oldifs
+done
+if grep -q 'self-test FAILED' "$work/run.out"; then
+    echo "golden: run.sh's own self-test failed (tree against tree): the harness, not aspen" >&2
+    exit 2
+fi
+echo "golden: run.sh matrix: $agree agree / $differ differ / $notyet not-yet ($coll of them v1 cases under en_US.UTF-8)"
+
+# --- the other scripts: their failure reports, classed --------------------
+# a report line names its flags in [brackets] or after the script's tag;
+# the v2 words it may name are the ones classify knows
+other() { # script, tag
+    _s=$1 _tag=$2
+    sh "tests/golden/$_s" >"$work/$_s.out" 2>&1
+    _rc=$?
+    _v1=0
+    _v2=0
+    while IFS= read -r _l; do
+        case "$_l" in
+        "$_tag"*) ;;
+        *) continue ;;
+        esac
+        _k=$(classify_report "$_s" "$_l")
+        case "$_k" in
+        ok) ;;
+        v1) _v1=$((_v1 + 1)); echo "  $_s v1: $_l" ;;
+        *) _v2=$((_v2 + 1)) ;;
+        esac
+    done <"$work/$_s.out"
+    differ=$((differ + _v1))
+    notyet=$((notyet + _v2))
+    echo "golden: $_s (exit $_rc): $_v1 v1 report(s), $_v2 not-yet report(s); last line: $(tail -1 "$work/$_s.out")"
+}
+other walk.sh "WALK:"
+other outfile.sh "OUTFILE:"
+other fpath.sh "FPATH"
+other patterns.sh "PATTERNS"
+other usage.sh "USAGE:"
+other deviations.sh "DEVIATIONS"
+other structural.sh "STRUCT"
+other fdlimit.sh "FDLIMIT:"
+
+echo "golden: $agree agree / $differ differ / $notyet not-yet"
+[ "$differ" = 0 ]
