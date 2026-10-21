@@ -6,8 +6,9 @@
 //! wording and exit 1 for every usage error (`src/options.c:142`). Two of
 //! tree's linux options, `--acl` and `--selinux`, need the file's extended
 //! attributes, which wolf cannot read: they are refused BY NAME with exit
-//! 2 (`refuse`), as is C aspen's `--asp-diff`, until a ruling says
-//! otherwise (notes/ap01-the-second-light.md §9).
+//! 2 (`refuse`), until a ruling says otherwise
+//! (notes/ap01-the-second-light.md §9). C aspen's `--asp-diff` and test
+//! hook `--asp-debug-walk` are taken out before the parse (`src/main.c:99`).
 
 /// The sort keys (`src/options.h:14`).
 pub fn sort_name() -> int {
@@ -805,12 +806,6 @@ pub fn parse(args: List[str], macos: bool) -> Parsed {
                         o,
                         a,
                         "tree's option: it reads extended attributes, which wolf has no call for",
-                    )
-                } else if a == "--asp-diff" {
-                    return refuse(
-                        o,
-                        a,
-                        "C aspen's own extension; a ruling decides whether it is carried",
                     )
                 } else {
                     let r = parse_valued(mut o, a, i, args)

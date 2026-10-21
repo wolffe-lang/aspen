@@ -29,9 +29,12 @@ fn main() -> int {
     // words (`src/main.c:99`)
     var words = List[str]()
     var debug = false
+    var asp_diff = false
     for a in env_args() {
         if a == "--asp-debug-walk" {
             debug = true
+        } else if a == "--asp-diff" {
+            asp_diff = true
         } else {
             (mut words).push(a)
         }
@@ -106,6 +109,20 @@ fn main() -> int {
         debug: debug,
     }
     var w = walk.make(o, fd, env)
+    if asp_diff {
+        // C aspen's own: two trees compared (`src/main.c:148`)
+        if p.roots.len != 2 {
+            var se = out.to_fd(2)
+            out.s(mut se, "aspen: --asp-diff requires exactly two directories\n")
+            out.flush(mut se)
+            return 1
+        }
+        let ds = walk.diff(mut w, o, p.roots[0], p.roots[1])
+        if fd != 1 {
+            fs_close(fd) else |_| {}
+        }
+        return ds
+    }
     let status = walk.run(mut w, o, roots)
     if debug {
         var se = out.to_fd(2)
