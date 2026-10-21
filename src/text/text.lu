@@ -231,7 +231,10 @@ pub fn root(mut t: Text, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st
         t.pathoffset = if rp.len > 0 then pb.len else 0
     }
     meta(mut t, o, st, has_st)
-    if t.hyper && !failed {
+    // tree links any root that exists, one it could not open too
+    // (measured; C aspen only an opened one, `src/render/unix.c:238`)
+    let linked = t.hyper && (!failed || has_st)
+    if linked {
         open_link(mut t, pb, pb.len, pb, 0, 0)
     }
     var colored = false
@@ -242,7 +245,7 @@ pub fn root(mut t: Text, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st
     if colored {
         color.end(t.colors, mut t.o)
     }
-    if t.hyper && !failed {
+    if linked {
         close_link(mut t)
     }
     if o.classify {
