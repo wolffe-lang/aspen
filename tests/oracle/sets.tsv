@@ -4,8 +4,11 @@
 # class v1: aspen must agree with `tree -n` byte for byte (stdout, stderr
 # with the program name normalised, exit status; -o FILE's file too).
 # class v2: aspen refuses the option by name, exit 2; tree's answer is
-# measured and printed (status, bytes, lines) so ap01 starts from numbers.
+# measured and printed (status, bytes, lines). Since ap01 the v2 sets are
+# --acl and --selinux alone (extended attributes, which wolf cannot read).
 # Arguments are shell words (no globbing); %O is an output file per side.
+# A --fromfile/--fromtabfile set runs over the fixture's input files
+# instead of the directory roots (tools/oracle).
 default	v1	
 all	v1	-a
 dirs	v1	-d
@@ -72,47 +75,132 @@ bad-long	v1	--bogus
 bad-short	v1	-aZd
 missing-pattern	v1	-P
 help	v1	--help
-color	v2	-C
-html	v2	-H .
-xml	v2	-X
-follow	v2	-l
-xdev	v2	-x
-fromfile	v2	--fromfile
-fromtabfile	v2	--fromtabfile
-fflinks	v2	--fflinks
-filelimit	v2	--filelimit 3
-charset	v2	--charset=ascii
-cp437	v2	-S
-version-sort	v2	-v
-sort	v2	--sort=size
-user	v2	-u
-group	v2	-g
-inodes	v2	--inodes
-device	v2	--device
-qmark	v2	-q
-noprint	v2	-N
-quote	v2	-Q
-timefmt	v2	--timefmt %F
-rerun	v2	-R
-noindent	v2	-i
-ctime	v2	-c
-unsorted	v2	-U
-filesfirst	v2	--filesfirst
-si	v2	--si
-metafirst	v2	--metafirst
-gitignore	v2	--gitignore
-gitfile	v2	--gitfile=.gitignore
-info	v2	--info
-infofile	v2	--infofile=x
-condense	v2	--condense
-compress	v2	--compress 2
-hyperlink	v2	--hyperlink
-scheme	v2	--scheme ssh://
-authority	v2	--authority x
-opt-toggle	v2	--opt-toggle
-title	v2	-T x
-nolinks	v2	--nolinks
-hintro	v2	--hintro=/dev/null
-houtro	v2	--houtro=/dev/null
+color	v1	-C
+color-full	v1	-C -F -p
+html	v1	-H .
+html-title	v1	-H . -T 'My Tree' --nolinks
+html-offset	v1	-H -base
+html-url	v1	-H http://x/y -F
+html-class	v1	-H . -C -s
+html-meta	v1	-H . -p -h -D
+html-full	v1	-H . -f -a
+html-dirs	v1	-H . -d --du
+html-compress	v1	-H . --compress 2
+html-intro	v1	-H . --hintro=/dev/null --houtro=/dev/null
+xml	v1	-X
+xml-all	v1	-X -a
+xml-meta	v1	-X -p -s -D
+xml-ids	v1	-X -u -g --inodes --device
+xml-full	v1	-X -f
+xml-du	v1	-X --du
+xml-noindent	v1	-X -i
+xml-compress	v1	-X --compress=3
+xml-charset	v1	-X --charset=ISO-8859-1
+xml-level	v1	-X -L 1 -d
+follow	v1	-l
+follow-json	v1	-l -J
+follow-xml	v1	-l -X
+follow-classify	v1	-l -F -L 3
+follow-du	v1	-l --du
+xdev	v1	-x
+xdev-follow	v1	-x -l
+fromfile	v1	--fromfile
+fromfile-classify	v1	--fromfile -F -a
+fromfile-json	v1	--fromfile -J -p
+fromfile-xml	v1	--fromfile -X
+fromfile-du	v1	--fromfile --du -h
+fromfile-pattern	v1	--fromfile -P '*.c' --prune
+fromtabfile	v1	--fromtabfile
+fromtabfile-links	v1	--fromtabfile --fflinks
+fflinks	v1	--fflinks --fromfile
+filelimit	v1	--filelimit 3
+filelimit-json	v1	--filelimit 3 -J
+filelimit-xml	v1	--filelimit 3 -X
+filelimit-du	v1	--filelimit 5 --du
+filelimit-dirs	v1	--filelimit=2 -d
+charset	v1	--charset=ascii
+charset-ibm	v1	--charset IBM437
+charset-sjis	v1	--charset=Shift_JIS -F
+charset-utf8	v1	--charset=utf8
+charset-unknown	v1	--charset=nosuch
+charset-empty	v1	--charset=
+charset-missing	v1	--charset
+cp437	v1	-S
+version-sort	v1	-v
+version-reverse	v1	-v -r --dirsfirst
+sort	v1	--sort=size
+sort-size-r	v1	--sort=size -r
+sort-mtime	v1	--sort mtime
+sort-ctime	v1	--sort=ctime
+sort-none	v1	--sort=none
+sort-name	v1	--sort=NAME --filesfirst
+sort-bad	v1	--sort=bogus
+user	v1	-u
+group	v1	-g
+ugps	v1	-pugs
+inodes	v1	--inodes
+device	v1	--device
+inodes-json	v1	-J --inodes --device
+qmark	v1	-q
+noprint	v1	-N
+quote	v1	-Q
+quote-classify	v1	-Q -F
+qmark-json	v1	-q -J
+timefmt	v1	--timefmt %F
+timefmt-many	v1	--timefmt '%Y-%m-%d %H:%M:%S %Z %z %j %a %A %b %B %e %k %l %p %I %y %C'
+timefmt-week	v1	--timefmt '%s %u %w %U %W %V %G %g %D %T %R %r %c %x %X %h %n%t%%'
+timefmt-flags	v1	--timefmt '%-d %_m %05e %^b %#Z %10Y %Ey %Od %q %'
+timefmt-long	v1	--timefmt ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ%Y
+timefmt-json	v1	-J --timefmt %F -c
+rerun	v1	-R
+noindent	v1	-i
+noindent-meta	v1	-i -p -F
+ctime	v1	-c
+ctime-date	v1	-c -D
+unsorted	v1	-U
+unsorted-dirsfirst	v1	-U --dirsfirst
+filesfirst	v1	--filesfirst
+si	v1	--si
+si-du	v1	--si --du
+si-json	v1	--si -J
+metafirst	v1	--metafirst
+metafirst-meta	v1	--metafirst -ps
+gitignore	v1	--gitignore
+gitignore-all	v1	--gitignore -a
+gitignore-prune	v1	--gitignore --prune -F
+gitfile	v1	--gitfile=.gitignore
+gitfile-missing	v1	--gitfile=nosuch
+info	v1	--info
+info-all	v1	--info -a
+info-json	v1	--info -J
+info-xml	v1	--info -X
+info-html	v1	--info -H .
+infofile	v1	--infofile=x
+infofile-real	v1	--infofile=extra.info
+condense	v1	--condense
+condense-du	v1	--condense --du
+condense-json	v1	--condense -J
+condense-xml	v1	--condense -X
+condense-dirs	v1	--condense -d -f
+compress	v1	--compress 2
+compress-1	v1	--compress=1
+compress-3	v1	--compress 3
+compress-4	v1	--compress 4
+compress-neg	v1	--compress=-2
+compress-neg3	v1	--compress=-3
+compress-json	v1	-J --compress 2
+compress-ascii	v1	--charset=ascii --compress=-1
+hyperlink	v1	--hyperlink
+hyperlink-full	v1	--hyperlink -f -F
+scheme	v1	--hyperlink --scheme ssh://
+scheme-nocolon	v1	--hyperlink --scheme nocolon
+authority	v1	--hyperlink --authority x
+authority-dot	v1	--hyperlink --authority .
+opt-toggle	v1	--opt-toggle
+opt-toggle-flip	v1	-a -s --opt-toggle -a -s -p
+title	v1	-T x
+nolinks	v1	--nolinks
+hintro	v1	--hintro=/dev/null
+houtro	v1	--houtro=/dev/null
 acl	v2	--acl
 selinux	v2	--selinux

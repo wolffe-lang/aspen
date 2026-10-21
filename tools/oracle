@@ -57,7 +57,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/aspen-oracle.XXXXXX") || exit 2
 trap 'chmod -R u+rwx "$work" 2>/dev/null; rm -rf "$work"' EXIT INT TERM
 fx=$work/fx
 sh "$ASPEN_ROOT/tests/fixtures/mkfixtures" "$fx" >/dev/null || { echo "oracle: the fixtures did not build" >&2; exit 2; }
-roots="main wide deny empty afile lnkroot /no/such/root"
+roots="main wide deny empty afile lnkroot extra /no/such/root"
 
 normerr() { sed 's/^tree: /PROG: /; s/^aspen: /PROG: /; s/^usage: tree /usage: PROG /; s/^usage: aspen /usage: PROG /'; }
 normout() { sed 's/^usage: tree /usage: PROG /; s/^usage: aspen /usage: PROG /; s/,"contents":\[ *\]//g'; }
@@ -113,6 +113,8 @@ while IFS="$tab" read -r id cls args; do
     fi
     # a help/usage set needs no root; every other runs over each root
     case "$id" in help | bad-long | bad-short | missing-pattern | level-missing) rlist="-" ;; *) rlist=$roots ;; esac
+    # --fromfile and --fromtabfile read their roots as input files
+    case " $args " in *" --fromfile "* | *" --fromtabfile "*) rlist="paths.txt tabs.txt /no/such/root" ;; esac
     for lc in $locales; do
         for r in $rlist; do
             [ "$r" = "-" ] && r=""

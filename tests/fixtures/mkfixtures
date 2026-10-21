@@ -143,4 +143,30 @@ chmod 000 "$d/no"
 mkdir -p "$root/empty"
 printf 'hello' >"$root/afile"
 ln -s wide "$root/lnkroot"
+
+# extra: what ap01's options read: .gitignore files at two levels, a .info,
+# names a version sort and dictionary collation order differently, chains
+# of single directories for --condense, links that loop for -l
+x="$root/extra"
+mkdir -p "$x/build" "$x/sub/deeper" "$x/chain/a/b/c" "$x/single/only" "$x/two/d1" "$x/two/d2" \
+    "$x/real/inner"
+printf '*.log\nbuild/\n!keep.log\n/top.txt\n# a comment\n\\#hash\ntrail\\ \n' >"$x/.gitignore"
+printf 'c.tmp\n/deeper/\n' >"$x/sub/.gitignore"
+printf '# info\nREADME*\n\tThe readme.\n*.c\n\tA C file.\n\tIts second line.\n\tAnd a third.\nsub\n\tThe sub directory.\n' >"$x/.info"
+for f in README a.log keep.log top.txt "#hash" "trail " main.c util.c build/out sub/top.txt \
+    sub/c.tmp sub/b.log sub/deeper/z chain/a/b/c/leaf.txt two/d1/f real/inner/g \
+    v1.9 v1.10 v1.5 file2 file10 file1 alpha001 alpha1 alpha010 1.0 1.0.1 10 2 Zebra apple \
+    _under; do
+    printf 'x' >"$x/$f"
+done
+ln -s ../.. "$x/real/inner/up"
+ln -s ../real "$x/two/toreal"
+ln -s real "$x/rlink"
+printf '*.txt\n' >"$root/.gitignore"
+printf 'extra\n\tThe extra fixture.\n*.c\n\tC from the explicit file.\n' >"$root/extra.info"
+
+# the inputs of --fromfile and --fromtabfile (tools/oracle lists them as
+# the roots of those sets)
+printf 'a/b/c.txt\na/b/d.log\na/e.c\nf.txt\ng/\nh/i/j/deep.c\nsrc/main.c\nsrc/util.h\n.hidden/secret.txt\n# comment\n\n./dot/x\nbin/sh -> /usr/bin/sh\nlib/libc.so\n' >"$root/paths.txt"
+printf 'root\n\tsub1\n\t\tfile1.c\n\t\tfile2.txt\n\tsub2\n\t\tinner -> /tmp/x\n\torphan.txt\ntop\n\t\t\ttoodeep\nlast\n' >"$root/tabs.txt"
 echo "mkfixtures: $root"
