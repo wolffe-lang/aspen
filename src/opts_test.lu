@@ -107,7 +107,10 @@ fn main() {
     assert(opts.load_error(inf.o, [true, true]) == "", "both read")
     let two = opts.parse(words("--gitfile=a --gitfile b --infofile=c"), false)
     assert(
-        two.stop == -1 && two.o.gitfiles.len == 2 && two.o.gitignore && two.o.infofiles.len == 1 &&
+        two.stop == -1 &&
+            two.o.gitfiles.len == 2 &&
+            two.o.gitignore &&
+            two.o.infofiles.len == 1 &&
             two.o.showinfo,
         "every --gitfile is kept",
     )
