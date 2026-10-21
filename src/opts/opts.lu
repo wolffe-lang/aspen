@@ -92,12 +92,12 @@ pub struct Opts {
     patterns: List[List[byte]],
     ipatterns: List[List[byte]],
     gitignore: bool,
-    gitfile: str,
-    has_gitfile: bool,
+    gitfiles: List[str],
+    loads: List[str],
+    load_git: List[bool],
     prune: bool,
     showinfo: bool,
-    infofile: str,
-    has_infofile: bool,
+    infofiles: List[str],
     filelimit: int,
     metafirst: bool,
     condense: bool,
@@ -181,12 +181,12 @@ pub fn defaults() -> Opts {
         patterns: List[List[byte]](),
         ipatterns: List[List[byte]](),
         gitignore: false,
-        gitfile: "",
-        has_gitfile: false,
+        gitfiles: List[str](),
+        loads: List[str](),
+        load_git: List[bool](),
         prune: false,
         showinfo: false,
-        infofile: "",
-        has_infofile: false,
+        infofiles: List[str](),
         filelimit: 0,
         metafirst: false,
         condense: false,
@@ -340,6 +340,22 @@ pub fn help_body(macos: bool) -> str {
     t += "  --help        Print usage and this help message and exit.\n"
     t += "  --            Options processing terminator.\n"
     t
+}
+
+/// tree's load of the `--gitfile`/`--infofile` files the parse met, in
+/// order, before anything else it would do (its answer to a stop
+/// included): the message of the first that `ok` (whether each could be
+/// read, as the caller found) says failed, or "".
+pub fn load_error(o: Opts, ok: List[bool]) -> str {
+    var i = 0
+    while i < o.loads.len && i < ok.len {
+        if !ok[i] {
+            let what = if o.load_git[i] then "gitignore file" else "infofile"
+            return "aspen: Could not load {what}\n"
+        }
+        i += 1
+    }
+    ""
 }
 
 /// aspen's version, the one `--version` prints.
@@ -1043,14 +1059,21 @@ fn parse_valued(mut o: Opts, a: str, i: int, args: List[str]) -> Valued {
                 }
             }
             o.sort = k
-        } else if pfx == "--gitfile" {
-            o.gitignore = true
-            o.gitfile = v
-            o.has_gitfile = true
-        } else if pfx == "--infofile" {
-            o.showinfo = true
-            o.infofile = v
-            o.has_infofile = true
+        } else if pfx == "--gitfile" || pfx == "--infofile" {
+            // tree loads each file as it parses its option, and stops at
+            // the first it cannot (measured: before a later bad flag, with
+            // no output, status 1); every one is kept, where C aspen keeps
+            // the last (`src/options.c:309`). The parser reads no file:
+            // `loads` lists them in order for the caller (`load_error`)
+            (mut o.loads).push(v)
+            (mut o.load_git).push(pfx == "--gitfile")
+            if pfx == "--gitfile" {
+                o.gitignore = true
+                (mut o.gitfiles).push(v)
+            } else {
+                o.showinfo = true
+                (mut o.infofiles).push(v)
+            }
         } else if pfx == "--hintro" {
             o.hintro = v
             o.has_hintro = true

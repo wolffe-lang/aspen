@@ -93,6 +93,24 @@ fn main() {
     assert(opts.threads_value("abc") == -1 && opts.threads_value("-1") == -1, "--threads junk")
     assert(opts.threads_value("1x") == -1 && opts.threads_value("999999") == -1, "--threads range")
     assert(opts.threads_value("") == -1, "--threads empty")
+    let gf = opts.parse(words("--gitfile=nosuch -Z"), false)
+    assert(gf.stop == 1 && gf.o.loads.len == 1, "a --gitfile is met before a later bad flag")
+    assert(
+        opts.load_error(gf.o, [false]) == "aspen: Could not load gitignore file\n",
+        "a --gitfile not read",
+    )
+    let inf = opts.parse(words("--gitfile=g --infofile x"), false)
+    assert(
+        opts.load_error(inf.o, [true, false]) == "aspen: Could not load infofile\n",
+        "an --infofile not read",
+    )
+    assert(opts.load_error(inf.o, [true, true]) == "", "both read")
+    let two = opts.parse(words("--gitfile=a --gitfile b --infofile=c"), false)
+    assert(
+        two.stop == -1 && two.o.gitfiles.len == 2 && two.o.gitignore && two.o.infofiles.len == 1 &&
+            two.o.showinfo,
+        "every --gitfile is kept",
+    )
     let th = opts.parse(words("--threads abc"), false)
     assert(
         th.stop == 1 && th.err.contains("Invalid --threads value 'abc'"),

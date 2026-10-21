@@ -14,6 +14,16 @@ use out
 use std.time
 use walk
 
+/// Whether `--gitfile`/`--infofile`'s file can be read (tree's load).
+fn readable(path: str) -> bool {
+    var ok = true
+    let _ = fs_read_bytes(path) else |_| {
+        ok = false
+        List[byte]()
+    }
+    ok
+}
+
 fn main() -> int {
     // C aspen's test-only hook, taken out before tree's parser sees the
     // words (`src/main.c:99`)
@@ -28,6 +38,17 @@ fn main() -> int {
     }
     let macos = opts.is_macos()
     let p = opts.parse(words, macos)
+    var oks = List[bool]()
+    for f in p.o.loads {
+        (mut oks).push(readable(f))
+    }
+    let le = opts.load_error(p.o, oks)
+    if le.len > 0 {
+        var se = out.to_fd(2)
+        out.s(mut se, le)
+        out.flush(mut se)
+        return 1
+    }
     if p.stop >= 0 {
         var so = out.to_fd(1)
         out.s(mut so, p.out)
