@@ -1,0 +1,8 @@
+#!/bin/sh
+# check-fmt — `wolf fmt --check` over every .lu in src/.
+set -eu
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+export ASPEN_ROOT
+cd "$ASPEN_ROOT"
+. tools/lib-toolchain.sh
+"$WOLF" fmt --check src
