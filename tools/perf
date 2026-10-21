@@ -1,7 +1,7 @@
 #!/bin/sh
-# perf — the perf row: aspen within 2x of C aspen's wall time.
+# perf — the perf rows: aspen within 2x of C aspen's wall time.
 #
-#   tools/perf [--bin ASPEN] [--c-bin C_ASPEN] [--runs N] [--ratio R]
+#   tools/perf [--bin ASPEN] [--c-bin C_ASPEN] [--runs N] [--ratio R] [--s-ratio S]
 #
 # Two workloads, generated in /tmp (the container's, RULES §5):
 #   wide1k    one directory of 1,000 entries (990 files, 10 directories)
@@ -10,25 +10,27 @@
 # (every entry stat'ed). tree 2.3.2, C aspen (aspen.pin, built in the
 # container) and aspen each list every workload N times (default 3),
 # interleaved, under `taskset -c 0-3`, output to /dev/null, wall time from
-# `date +%s%N`. THE GATE is the contract's row, the listing: aspen's
-# median at most R (default 2) times C aspen's on both default rows. The
-# -s rows are measured and printed, not gated: there C aspen stats on a
-# thread pool (src/traverse.c:393) and so does aspen, but aspen's main
-# thread still does more per entry (docs/MAP.md; ap01's). Exit 1 on a
-# gated row over the ratio. C aspen's own gate (bench/gate.sh) is "faster
-# than tree"; the 2x-of-C-aspen gate is ap00's, its ratchet a later ruling.
+# `date +%s%N`. THE GATES: the listing, aspen's median at most R (default
+# 2) times C aspen's on both default rows (ap00's row); and since ap01 the
+# -s rows at most S (default 2) times C aspen's, every entry stat'ed on
+# both sides' pools (C aspen's src/traverse.c:393; aspen's tasks format
+# the column too, notes/ap01-the-second-light.md §6). Exit 1 on a row over
+# its ratio. C aspen's own gate (bench/gate.sh) is "faster than tree"; the
+# 2x-of-C-aspen gates are ap00's and ap01's, their ratchet a ruling.
 set -u
 ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 bin=$ASPEN_ROOT/target/release/aspen
 cbin=$ASPEN_ROOT/.oracle/c-aspen/aspen
 runs=3
 ratio=2
+sratio=2
 while [ $# -gt 0 ]; do
     case "$1" in
     --bin) bin=$2; shift 2 ;;
     --c-bin) cbin=$2; shift 2 ;;
     --runs) runs=$2; shift 2 ;;
     --ratio) ratio=$2; shift 2 ;;
+    --s-ratio) sratio=$2; shift 2 ;;
     *) echo "perf: unknown argument $1" >&2; exit 2 ;;
     esac
 done
@@ -91,10 +93,9 @@ for wl in wide1k tree100k; do
         am=$(echo "$at" | median)
         r=$(awk -v a="$am" -v c="$cm" 'BEGIN { printf "%.2f", a / c }')
         rt=$(awk -v a="$am" -v t="$tm" 'BEGIN { printf "%.2f", a / t }')
-        verdict=$(awk -v a="$am" -v c="$cm" -v m="$ratio" 'BEGIN { print (a <= c * m) ? "ok" : "OVER" }')
-        if [ "$fl" != default ]; then
-            verdict="$verdict (reported, not gated)"
-        fi
+        lim=$ratio
+        [ "$fl" = default ] || lim=$sratio
+        verdict=$(awk -v a="$am" -v c="$cm" -v m="$lim" 'BEGIN { print (a <= c * m) ? "ok" : "OVER" }')
         printf 'perf: %-9s %-7s tree %8s ms  C aspen %8s ms  aspen %8s ms  aspen/C %5s  aspen/tree %5s  %s\n' \
             "$wl" "$fl" "$(ms "$tm")" "$(ms "$cm")" "$(ms "$am")" "$r" "$rt" "$verdict"
         printf 'perf:   runs (ms): tree%s  C%s  aspen%s\n' \
@@ -104,5 +105,5 @@ for wl in wide1k tree100k; do
         [ "$verdict" = OVER ] && fail=1
     done
 done
-[ "$fail" = 0 ] && echo "perf: the listing within ${ratio}x of C aspen on both workloads" || echo "perf: the listing is over ${ratio}x of C aspen"
+[ "$fail" = 0 ] && echo "perf: the listing within ${ratio}x and -s within ${sratio}x of C aspen on both workloads" || echo "perf: a row is over its ratio of C aspen (the listing ${ratio}x, -s ${sratio}x)"
 exit $fail
