@@ -1301,6 +1301,44 @@ fn t_tree(
     }
 }
 
+/// `--gitignore`'s walk up from a root (tree 2.3.2's manual: it "attempts
+/// to walk up the directory tree from the given path(s) searching for
+/// .gitignore files as it goes, stopping at / or a directory containing a
+/// .git directory. If a .git directory is found it will add the
+/// .git/info/exclude file as well"). C aspen does not walk up
+/// (`src/filter.h:11`, "NOT YET"), and no golden covers it, so the port
+/// follows tree, measured in the oracle's container: the root itself is
+/// asked for a `.git` first; an ancestor's absolute patterns match no
+/// entry (its base is the root's path with `/..` appended, as here, which
+/// no entry's path is); the root's own `.gitignore` is the listing's.
+fn git_walk_up(mut w: Walk, root: str) {
+    var cur = root
+    var k = 0
+    while k < 4096 {
+        if k > 0 {
+            let (ok, ig) = gitignore.load_dir(cur)
+            if ok {
+                (mut w.igs).push(ig)
+            }
+        }
+        if fs_is_dir("{cur}/.git") {
+            let (ok, ig) = gitignore.load_file(cur, "{cur}/.git/info/exclude")
+            if ok {
+                (mut w.igs).push(ig)
+            }
+            return
+        }
+        let rp = fs_realpath(cur) else |_| {
+            return
+        }
+        if rp == "/" {
+            return
+        }
+        cur = "{cur}/.."
+        k += 1
+    }
+}
+
 /// The per-root state, fresh (`asp_walk`'s wctx).
 fn reset_root(mut w: Walk) {
     w.a = ent.arena()
@@ -1347,13 +1385,17 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
         return
     }
     reset_root(mut w)
-    if o.has_gitfile {
-        let (ok, ig) = gitignore.load_file(".", o.gitfile)
+    // --gitfile's patterns: tree's base for their absolute ones is not
+    // the working directory (measured: `/r/c.c` in one does not hide
+    // `./r/c.c`), so it is the file's own path here, as an info file's is
+    for gf in o.gitfiles {
+        let (ok, ig) = gitignore.load_file(gf, gf)
         if ok {
             (mut w.igs).push(ig)
         }
     }
     if o.gitignore {
+        git_walk_up(mut w, cpath)
         var have = true
         let gd = env_get("GIT_DIR") else |_| {
             have = false
@@ -1366,8 +1408,8 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
             }
         }
     }
-    if o.has_infofile {
-        let (ok, inf) = infofile.load_file(o.infofile)
+    for inff in o.infofiles {
+        let (ok, inf) = infofile.load_file(inff)
         if ok {
             (mut w.infs).push(inf)
         }
@@ -1398,7 +1440,7 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
     var has_st = false
     var st = ent.no_meta()
     let rstat = root_needs_stat(o)
-    if rstat || is_tree_fmt(w) {
+    if rstat || is_tree_fmt(w) || w.fmt == opts.out_html() {
         let (h, s) = root_meta(root)
         has_st = h && rstat
         if h {
