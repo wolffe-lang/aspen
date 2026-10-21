@@ -1,0 +1,120 @@
+//! locale — what C aspen's `setlocale(LC_CTYPE, "")` and `MB_CUR_MAX` /
+//! `nl_langinfo(CODESET)` answer (`src/main.c:89`, `src/charset.c:136`),
+//! from the environment, since wolf has no locale surface.
+//!
+//! The character type is UTF-8 when the locale the environment names
+//! (`LC_ALL`, else `LC_CTYPE`, else `LANG`; the first that is set and not
+//! empty) has the codeset UTF-8 AND is one the C library would load:
+//! `C.UTF-8` is built into glibc (2.35 and later); any other name must
+//! be installed (`/usr/lib/locale/<name>/LC_CTYPE`, or the name in
+//! `/usr/lib/locale/locale-archive`; on macOS `/usr/share/locale/<name>`).
+//! A name that is not installed leaves `setlocale` at "C", as glibc does.
+//!
+//! Collation is NOT carried: v1 sorts by byte in every locale, which is
+//! what tree does in C and C.UTF-8 (their `strcoll` is `strcmp`,
+//! `src/sort.c:114`). A dictionary locale such as en_US.UTF-8 collates
+//! with `strcoll` there and can order names differently (README; ap01).
+
+fn nonempty(name: str) -> str {
+    env_get(name) else ""
+}
+
+/// The locale name `setlocale(LC_CTYPE, "")` reads.
+pub fn ctype_name() -> str {
+    let all = nonempty("LC_ALL")
+    if all.len > 0 {
+        return all
+    }
+    let ct = nonempty("LC_CTYPE")
+    if ct.len > 0 {
+        return ct
+    }
+    nonempty("LANG")
+}
+
+fn utf8_codeset(name: str) -> bool {
+    let n = name.lower()
+    let dot = n.find(".") else -1
+    if dot < 0 {
+        return false
+    }
+    var cs = n[dot + 1..]
+    let at = cs.find("@") else -1
+    if at >= 0 {
+        cs = cs[0..at]
+    }
+    cs == "utf-8" || cs == "utf8"
+}
+
+/// glibc's normalized codeset spelling: `en_US.UTF-8` -> `en_US.utf8`.
+fn normalized(name: str) -> str {
+    let dot = name.find(".") else -1
+    if dot < 0 {
+        return name
+    }
+    var tail = name[dot + 1..]
+    var mod_ = ""
+    let at = tail.find("@") else -1
+    if at >= 0 {
+        mod_ = tail[at..]
+        tail = tail[0..at]
+    }
+    var cs = ""
+    for ch in tail.lower().bytes() {
+        if ch as int != 45 && ch as int != 95 {
+            cs += str_from_utf8([ch]) else ""
+        }
+    }
+    name[0..dot] + "." + cs + mod_
+}
+
+fn installed(name: str) -> bool {
+    let low = name.lower()
+    if low == "c.utf-8" || low == "c.utf8" {
+        return true
+    }
+    let norm = normalized(name)
+    if fs_is_file("/usr/lib/locale/{name}/LC_CTYPE") ||
+        fs_is_file("/usr/lib/locale/{norm}/LC_CTYPE") {
+        return true
+    }
+    if fs_is_dir("/usr/share/locale/{name}") && fs_is_file("/usr/share/locale/{name}/LC_CTYPE") {
+        return true
+    }
+    // the archive lists each locale's name NUL-terminated
+    let arch = fs_read_bytes("/usr/lib/locale/locale-archive") else List[byte]()
+    has_name(arch, norm) || has_name(arch, name)
+}
+
+fn has_name(hay: List[byte], name: str) -> bool {
+    let n = name.len
+    if n == 0 || hay.len < n + 1 {
+        return false
+    }
+    let first = name.bytes()[0]
+    var i = 0
+    let last = hay.len - n - 1
+    while i <= last {
+        if hay[i] == first && (i == 0 || hay[i - 1] as int == 0) && hay[i + n] as int == 0 {
+            var k = 1
+            while k < n && hay[i + k] == name.bytes()[k] {
+                k += 1
+            }
+            if k == n {
+                return true
+            }
+        }
+        i += 1
+    }
+    false
+}
+
+/// Whether names and lines are UTF-8 (`MB_CUR_MAX > 1` and a UTF-8
+/// codeset; the UTF-8 locales are the only multibyte ones v1 reaches).
+pub fn utf8_ctype() -> bool {
+    let name = ctype_name()
+    if name.len == 0 || name == "C" || name == "POSIX" {
+        return false
+    }
+    utf8_codeset(name) && installed(name)
+}
