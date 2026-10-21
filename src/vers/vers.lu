@@ -1,0 +1,124 @@
+//! vers — `-v` and `--sort=version`'s comparison (C aspen
+//! `src/verscmp.c`, its `asp_verscmp`): a state machine over the two
+//! names that compares runs of digits by their numeric value, a run with
+//! leading zeros as a fraction. Its tables are the C's, transcribed.
+
+fn isdigit(c: int) -> bool {
+    c >= 48 && c <= 57
+}
+
+/// The byte at `i` of name `s` (`s[0]` is the row's type byte; the name
+/// is `s[1..]`), 0 past the end as the C's terminator.
+fn at(s: List[byte], i: int) -> int {
+    if i < s.len then s[i] as int else 0
+}
+
+fn cls(c: int) -> int {
+    (if c == 48 then 1 else 0) + (if isdigit(c) then 1 else 0)
+}
+
+/// `asp_verscmp(a, b)` over two rows' names: negative, 0 or positive.
+pub fn cmp(a: List[byte], b: List[byte]) -> int {
+    // next_state[state + class], states S_N 0, S_I 4, S_F 8, S_Z 12
+    let next_state = [0, 4, 12, 0, 0, 4, 4, 4, 0, 8, 8, 8, 0, 8, 12, 12]
+    // result_type[state << 2 | class]: 2 CMP, 3 LEN, else the answer
+    let result_type = [
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        -1,
+        -1,
+        2,
+        1,
+        3,
+        3,
+        2,
+        1,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        1,
+        2,
+        -1,
+        2,
+        2,
+        2,
+        -1,
+        2,
+        2,
+        2,
+    ]
+    var i = 1
+    var c1 = at(a, i)
+    var c2 = at(b, i)
+    i += 1
+    var state = cls(c1)
+    var diff = c1 - c2
+    while diff == 0 && c1 != 0 {
+        state = next_state[state]
+        c1 = at(a, i)
+        c2 = at(b, i)
+        i += 1
+        state = state | cls(c1)
+        diff = c1 - c2
+    }
+    let r = result_type[state * 4 | cls(c2)]
+    if r == 2 {
+        return diff
+    }
+    if r == 3 {
+        // LEN: the longer digit run is the greater
+        var p1 = i
+        var p2 = i
+        loop {
+            let d1 = isdigit(at(a, p1))
+            p1 += 1
+            if !d1 {
+                break
+            }
+            let d2 = isdigit(at(b, p2))
+            p2 += 1
+            if !d2 {
+                return 1
+            }
+        }
+        return if isdigit(at(b, p2)) then -1 else diff
+    }
+    r
+}
