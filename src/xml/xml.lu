@@ -43,7 +43,7 @@ fn indent(mut x: Xml, o: opts.Opts, level: int) {
     if o.noindent {
         return
     }
-    let spaces = ["    ", "   ", "  ", " ", ""]
+    let spaces = ["   ", "   ", "  ", " ", ""]
     let u = spaces[o.compress_indent + (if o.remove_space then 1 else 0)]
     var i = 0
     while i <= level {
