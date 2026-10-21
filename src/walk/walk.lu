@@ -493,6 +493,39 @@ fn order(o: opts.Opts, ev: List[ent.Ent]) -> List[int] {
             (mut keys).push(pack(ev[i].nm))
             i += 1
         }
+        // PLANT (never merge): the plain order by selection sort, n^2/2
+        // comparisons on every input, the same order, to see the perf row
+        // go red (an insertion sort is linear on the already-sorted input
+        // tmpfs hands over, and did not)
+        var x = 0
+        while x < n {
+            var best = x
+            var y = x + 1
+            while y < n {
+                let kb = keys[a[best]]
+                let ky = keys[a[y]]
+                if ky < kb || ky == kb && later(ev[a[best]].nm, ev[a[y]].nm, 8) {
+                    best = y
+                }
+                y += 1
+            }
+            let t = a[x]
+            a[x] = a[best]
+            a[best] = t
+            x += 1
+        }
+        if o.reverse {
+            var p = 0
+            var q = n - 1
+            while p < q {
+                let t = a[p]
+                a[p] = a[q]
+                a[q] = t
+                p += 1
+                q -= 1
+            }
+        }
+        return a
     }
     var width = 1
     while width < n {
