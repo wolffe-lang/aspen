@@ -1,0 +1,583 @@
+//! walk — the traversal (C aspen `src/traverse.c`, `src/sort.c`,
+//! `src/render.c`): read one directory, filter it, stat what a flag
+//! needs, sort it, and either stream it to the text renderer (the
+//! default) or build the whole tree first (`--du`, `--prune`,
+//! `--matchdirs`, and every `-J` run) and emit it after.
+//!
+//! The C walks fd-relative (`openat`, `getdents64`) and stats only when
+//! `d_type` is not enough (`src/traverse.c:188`); wolf-std's directory
+//! listing is path-based but answers `d_type` too (`fs_read_dir_entries`),
+//! so aspen also stats only for a flag that needs metadata, a symlink,
+//! or an entry whose type the host did not give. `-l`, `-x`,
+//! `--filelimit`, `--condense`, `--gitignore`, `--info`, `--fromfile`,
+//! `-R`, `-U` and the parallel stat pool are ap01's.
+
+use ent
+use glob
+use json
+use opts
+use text
+
+/// The walk's state: the output format and locale, both renderers (one
+/// is used), the built tree's arena, the totals and the error count.
+/// The options travel beside it, read-only.
+pub struct Walk {
+    utf8: bool,
+    is_json: bool,
+    t: text.Text,
+    j: json.Json,
+    ents: List[ent.Ent],
+    dirs: int,
+    files: int,
+    size: int,
+    errors: int,
+}
+
+/// A walk with the two renderers; `is_json` picks `-J`'s.
+pub fn new(is_json: bool, utf8: bool, take t: text.Text, take j: json.Json) -> Walk {
+    let z: int = 0
+    Walk {
+        utf8: utf8,
+        is_json: is_json,
+        t: t,
+        j: j,
+        ents: List[ent.Ent](),
+        dirs: z,
+        files: z,
+        size: z,
+        errors: z,
+    }
+}
+
+fn is_exec(mode: int) -> bool {
+    mode & 73 != 0
+}
+
+/// Any flag that needs the bracketed metadata column, or a sort by time:
+/// every entry is stat'ed (`src/traverse.c:202`, `:229`).
+fn want_st(o: opts.Opts) -> bool {
+    o.sizeflag || o.permflag || o.dateflag || o.duflag || o.sort == opts.sort_mtime()
+}
+
+/// The modes that build the whole tree before emitting
+/// (`src/traverse.c:299`, v1's three).
+fn full_tree(o: opts.Opts) -> bool {
+    o.duflag || o.prune || o.matchdirs
+}
+
+fn name_str(nm: List[byte]) -> str {
+    // a name that is not UTF-8 cannot be a wolf path (wolf-lang#687); the
+    // replacement makes every open or stat of it fail, by construction
+    str_from_utf8(nm[1..]) else "\u{fffd}/"
+}
+
+fn join(path: str, nm: List[byte]) -> str {
+    path + "/" + name_str(nm)
+}
+
+/// The entry's path as bytes, for -P/-I's full-path match.
+fn path_bytes(path: str, nm: List[byte]) -> List[byte] {
+    var b = List[byte]()
+    for x in path.bytes() {
+        (mut b).push(x)
+    }
+    (mut b).push(47 as byte)
+    var i = 1
+    while i < nm.len {
+        (mut b).push(nm[i])
+        i += 1
+    }
+    b
+}
+
+/// One directory's entries, filtered and stat'ed (`src/traverse.c:434`).
+/// `rows` is what `fs_read_dir_entries(path)` answered; they are taken
+/// from its end, which reverses the host's order before the sort
+/// decides the real one.
+fn read_level(
+    mut w: Walk,
+    o: opts.Opts,
+    path: str,
+    take rows: List[List[byte]],
+    suppress: bool,
+) -> List[ent.Ent] {
+    let want = want_st(o)
+    let pats = o.patterns.len > 0
+    let ipats = o.ipatterns.len > 0
+    var rs = rows
+    var ev = List[ent.Ent]()
+    while rs.len > 0 {
+        let r = (mut rs).pop() else List[byte]()
+        if r.len < 2 {
+            continue
+        }
+        if !o.all && r[1] as int == 46 {
+            continue
+        }
+        var t = r[0] as int
+        let lp = if t == ent.unknown() || t == ent.lnk() then join(path, r) else ""
+        var e = ent.new_ent(take r, t)
+        // the type the host did not give: lstat it (filtering needs it)
+        if t == ent.unknown() {
+            let wds = fs_lstat(lp) else |_| {
+                w.errors += 1
+                continue
+            }
+            t = wds[0]
+            e.kind = t
+            if t == ent.reg() && is_exec(wds[4]) {
+                e.flags = e.flags | ent.f_exec()
+            }
+            if want {
+                e.st = ent.meta_of(wds)
+                e.has_st = true
+            }
+        }
+        let deferred = !e.has_st && t != ent.lnk() && (want || o.classify && t == ent.reg())
+        if t == ent.lnk() {
+            if want {
+                let lw = fs_lstat(lp) else |_| {
+                    w.errors += 1
+                    continue
+                }
+                e.st = ent.meta_of(lw)
+                e.has_st = true
+            }
+            let target = fs_read_link(lp) else |_| {
+                var m = List[byte]()
+                for x in "[Error reading symbolic link information]".bytes() {
+                    (mut m).push(x)
+                }
+                m
+            }
+            e.lnk = target
+            e.has_lnk = true
+            var orphan = false
+            let tw = fs_stat(lp) else |_| {
+                orphan = true
+                List[int]()
+            }
+            if orphan {
+                e.flags = e.flags | ent.f_orphan()
+            } else {
+                e.ltype = tw[0]
+                if e.ltype == ent.reg() && is_exec(tw[4]) {
+                    e.flags = e.flags | ent.f_lexec()
+                }
+            }
+        }
+        let isdir = t == ent.dir() || t == ent.lnk() && e.ltype == ent.dir()
+        if pats && !suppress && t != ent.dir() {
+            let fb = path_bytes(path, e.nm)
+            if !glob.full(o.patterns, fb, fb.len - (e.nm.len - 1), isdir, o.ignorecase) {
+                continue
+            }
+        }
+        if ipats {
+            let fb = path_bytes(path, e.nm)
+            if glob.full(o.ipatterns, fb, fb.len - (e.nm.len - 1), isdir, o.ignorecase) {
+                continue
+            }
+        }
+        if o.dirsonly && !isdir {
+            continue
+        }
+        if deferred {
+            // the C batches these after the filters (`src/traverse.c:583`);
+            // one at a time here, after the same filters, the same drops
+            let sw = fs_lstat(join(path, e.nm)) else |_| {
+                w.errors += 1
+                continue
+            }
+            if t == ent.reg() && is_exec(sw[4]) {
+                e.flags = e.flags | ent.f_exec()
+            }
+            if want {
+                e.st = ent.meta_of(sw)
+                e.has_st = true
+            }
+        }
+        (mut ev).push(e)
+    }
+    ev
+}
+
+/// Byte order of two names (`strcmp`, `src/sort.c:56`: v1 collates by
+/// byte in every locale, which C and C.UTF-8 do; `src/locale` says what a
+/// dictionary locale does instead).
+fn namecmp(a: List[byte], b: List[byte]) -> int {
+    let na = a.len
+    let nb = b.len
+    var i = 1
+    while i < na && i < nb {
+        let x = a[i] as int
+        let y = b[i] as int
+        if x != y {
+            return if x < y then -1 else 1
+        }
+        i += 1
+    }
+    if na == nb {
+        return 0
+    }
+    if na < nb then -1 else 1
+}
+
+/// tree's comparator (`src/sort.c:98`): `--dirsfirst`, then the base
+/// sort (name, or `-t`'s modification time with the name breaking ties),
+/// reversed by `-r` (`--dirsfirst` is not).
+fn cmp(o: opts.Opts, ev: List[ent.Ent], a: int, b: int) -> int {
+    if o.dirsfirst {
+        let da = ent.dir_like(ev[a])
+        let db = ent.dir_like(ev[b])
+        if da != db {
+            return if da then -1 else 1
+        }
+    }
+    var v = 0
+    if o.sort == opts.sort_mtime() {
+        let ta = if ev[a].has_st then ev[a].st.mtime else 0
+        let tb = if ev[b].has_st then ev[b].st.mtime else 0
+        if ta == tb {
+            v = namecmp(ev[a].nm, ev[b].nm)
+        } else {
+            v = if ta < tb then -1 else 1
+        }
+    } else {
+        v = namecmp(ev[a].nm, ev[b].nm)
+    }
+    if o.reverse then -v else v
+}
+
+/// The display order of `ev`: a bottom-up merge sort of indices,
+/// O(n log n) (names in a directory are unique, so the order is total).
+fn order(o: opts.Opts, ev: List[ent.Ent]) -> List[int] {
+    let n = ev.len
+    var a = List[int]()
+    var tmp = List[int]()
+    var i = 0
+    while i < n {
+        (mut a).push(i)
+        (mut tmp).push(0)
+        i += 1
+    }
+    var width = 1
+    while width < n {
+        var lo = 0
+        while lo < n {
+            let mid = if lo + width < n then lo + width else n
+            let hi = if lo + 2 * width < n then lo + 2 * width else n
+            var x = lo
+            var y = mid
+            var k = lo
+            while x < mid && y < hi {
+                if cmp(o, ev, a[y], a[x]) < 0 {
+                    tmp[k] = a[y]
+                    y += 1
+                } else {
+                    tmp[k] = a[x]
+                    x += 1
+                }
+                k += 1
+            }
+            while x < mid {
+                tmp[k] = a[x]
+                x += 1
+                k += 1
+            }
+            while y < hi {
+                tmp[k] = a[y]
+                y += 1
+                k += 1
+            }
+            lo = hi
+        }
+        let sw = a
+        a = tmp
+        tmp = sw
+        width = width * 2
+    }
+    a
+}
+
+/// Whether to descend into `e` at `depth` (`src/traverse.c:646`; v1: a
+/// real directory above the `-L` limit).
+fn descends(o: opts.Opts, e: ent.Ent, depth: int) -> bool {
+    if e.kind != ent.dir() {
+        return false
+    }
+    !(o.level >= 0 && depth >= o.level)
+}
+
+/// The streaming walk (`src/traverse.c:691`).
+fn walk_dir(mut w: Walk, o: opts.Opts, path: str, take rows: List[List[byte]], depth: int) {
+    let ev = read_level(mut w, o, path, take rows, false)
+    let ord = order(o, ev)
+    let n = ord.len
+    var i = 0
+    while i < n {
+        let k = ord[i]
+        let is_last = i + 1 == n
+        if ent.dir_like(ev[k]) {
+            w.dirs += 1
+        } else {
+            w.files += 1
+        }
+        let descend = descends(o, ev[k], depth)
+        let cp = if descend || o.fullpath then join(path, ev[k].nm) else ""
+        text.entry(mut w.t, o, ev[k], cp, depth, is_last)
+        if descend {
+            var opened = true
+            let sub = fs_read_dir_entries(cp) else |_| {
+                opened = false
+                List[List[byte]]()
+            }
+            if opened {
+                text.newline(mut w.t)
+                walk_dir(mut w, o, cp, take sub, depth + 1)
+            } else {
+                text.error(mut w.t, "error opening dir")
+                text.newline(mut w.t)
+                w.errors += 1
+            }
+        } else {
+            text.newline(mut w.t)
+        }
+        i += 1
+    }
+}
+
+/// The whole subtree of an opened directory into the arena
+/// (`src/traverse.c:796`): its entries' indices, in display order.
+fn build_level(
+    mut w: Walk,
+    o: opts.Opts,
+    path: str,
+    take rows: List[List[byte]],
+    depth: int,
+    suppress: bool,
+) -> List[int] {
+    let ev = read_level(mut w, o, path, take rows, suppress)
+    let ord = order(o, ev)
+    var out = List[int]()
+    for k in ord {
+        var e = copy ev[k]
+        var child_suppress = suppress
+        // --matchdirs: a directory whose name matches -P shows its
+        // contents unfiltered and is kept by --prune
+        if o.matchdirs && o.patterns.len > 0 && ent.dir_like(e) {
+            let fb = path_bytes(path, e.nm)
+            if glob.full(o.patterns, fb, fb.len - (e.nm.len - 1), true, o.ignorecase) {
+                e.flags = e.flags | ent.f_matched()
+                child_suppress = true
+            }
+        }
+        if descends(o, e, depth) {
+            let cp = join(path, e.nm)
+            var opened = true
+            let sub = fs_read_dir_entries(cp) else |_| {
+                opened = false
+                List[List[byte]]()
+            }
+            if opened {
+                e.child = build_level(mut w, o, cp, take sub, depth + 1, child_suppress)
+                e.has_child = true
+            } else {
+                e.err = "error opening dir"
+                w.errors += 1
+            }
+        }
+        (mut w.ents).push(e)
+        (mut out).push(w.ents.len - 1)
+    }
+    out
+}
+
+/// `--prune`'s bottom-up pass (`src/traverse.c:940`): an empty directory
+/// is dropped unless `--matchdirs` matched its name.
+fn prune_level(mut w: Walk, arr: List[int]) -> List[int] {
+    var keep = List[int]()
+    for k in arr {
+        let dl = ent.dir_like(w.ents[k])
+        if dl && w.ents[k].has_child {
+            let kids = copy w.ents[k].child
+            let kept = prune_level(mut w, kids)
+            w.ents[k].child = kept
+        }
+        let empty = dl && (!w.ents[k].has_child || w.ents[k].child.len == 0)
+        if empty && w.ents[k].flags & ent.f_matched() == 0 {
+            continue
+        }
+        (mut keep).push(k)
+    }
+    keep
+}
+
+/// `--du`'s bottom-up sizes (`src/traverse.c:969`): a directory's size
+/// is its own plus its contents'; the level's total.
+fn du_level(mut w: Walk, arr: List[int]) -> int {
+    var sum: int = 0
+    for k in arr {
+        let dl = ent.dir_like(w.ents[k])
+        if dl && w.ents[k].has_child && w.ents[k].has_st {
+            let kids = copy w.ents[k].child
+            let sub = du_level(mut w, kids)
+            w.ents[k].st.size = w.ents[k].st.size + sub
+        }
+        if w.ents[k].has_st {
+            sum += w.ents[k].st.size
+        }
+    }
+    sum
+}
+
+/// Emit a built level to the text renderer (`src/traverse.c:984`).
+fn emit_level(mut w: Walk, o: opts.Opts, path: str, arr: List[int], depth: int) {
+    let n = arr.len
+    var i = 0
+    while i < n {
+        let k = arr[i]
+        let is_last = i + 1 == n
+        if ent.dir_like(w.ents[k]) {
+            w.dirs += 1
+        } else {
+            w.files += 1
+        }
+        let cp = join(path, w.ents[k].nm)
+        let e = copy w.ents[k]
+        text.entry(mut w.t, o, e, cp, depth, is_last)
+        if e.has_child {
+            text.newline(mut w.t)
+            emit_level(mut w, o, cp, e.child, depth + 1)
+        } else {
+            if e.err.len > 0 {
+                text.error(mut w.t, e.err)
+            }
+            text.newline(mut w.t)
+        }
+        i += 1
+    }
+}
+
+/// tree strips every trailing `/` from a root (one stays on `/`).
+fn strip_slashes(p: str) -> str {
+    var s = p
+    while s.len > 1 && s.ends_with("/") {
+        s = s[0..s.len - 1]
+    }
+    s
+}
+
+fn root_meta(path: str) -> (bool, ent.Meta) {
+    var ok = true
+    let w = fs_lstat(path) else |_| {
+        ok = false
+        List[int]()
+    }
+    if !ok {
+        return (false, ent.no_meta())
+    }
+    (true, ent.meta_of(w))
+}
+
+/// One root (`src/traverse.c:1242`).
+pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
+    let dr = if o.fullpath then strip_slashes(root) else root
+    let cpath = strip_slashes(root)
+    var opened = true
+    let rows = fs_read_dir_entries(root) else |_| {
+        opened = false
+        List[List[byte]]()
+    }
+    if !opened {
+        // tree lstats a root it cannot open: one that exists is shown
+        // "[error opening dir]" and counted as one file, status 0; one
+        // that does not is an error, status 2 (`src/traverse.c:1268`)
+        let (has, st) = root_meta(root)
+        if w.is_json {
+            json.failed_root(mut w.j, o, dr, st, has, last_root)
+        } else {
+            text.root(mut w.t, o, dr, "error opening dir", st, has)
+        }
+        if has {
+            if w.is_json {
+                w.j.files += 1
+            } else {
+                w.files += 1
+            }
+        } else {
+            w.errors += 1
+        }
+        return
+    }
+    // the root's own line shows its lstat (`src/traverse.c:1342`)
+    var has_st = false
+    var st = ent.no_meta()
+    if o.sizeflag || o.permflag || o.dateflag || o.duflag || o.classify {
+        let (h, s) = root_meta(root)
+        has_st = h
+        st = s
+    }
+    if w.is_json || full_tree(o) {
+        var top = build_level(mut w, o, cpath, take rows, 1, false)
+        if o.prune && !o.dirsonly {
+            let kept = prune_level(mut w, top)
+            top = kept
+        }
+        if o.duflag {
+            let dusum = du_level(mut w, top)
+            // the total is SET per root, so several roots report the last
+            // one's (`src/traverse.c:1375`)
+            if has_st {
+                st.size = st.size + dusum
+                w.size = st.size
+            } else {
+                w.size = dusum
+            }
+        }
+        if w.is_json {
+            json.tree(mut w.j, o, dr, st, has_st, w.ents, top, last_root)
+        } else {
+            text.root(mut w.t, o, dr, "", st, has_st)
+            if top.len > 0 {
+                w.dirs += 1
+            }
+            emit_level(mut w, o, cpath, top, 1)
+        }
+        w.ents = List[ent.Ent]()
+        return
+    }
+    let before = w.dirs + w.files
+    text.root(mut w.t, o, dr, "", st, has_st)
+    walk_dir(mut w, o, cpath, take rows, 1)
+    if w.dirs + w.files > before {
+        w.dirs += 1
+    }
+}
+
+/// Every root, the report, the end (`src/render.c:4`); the exit status:
+/// 2 when any open or stat failed, else 0.
+pub fn run(mut w: Walk, o: opts.Opts, roots: List[str]) -> int {
+    if w.is_json {
+        json.begin(mut w.j)
+    }
+    let n = roots.len
+    var i = 0
+    while i < n {
+        root(mut w, o, roots[i], i + 1 == n)
+        i += 1
+    }
+    if !o.noreport {
+        if w.is_json {
+            json.report(mut w.j, o, w.size)
+        } else {
+            text.report(mut w.t, o, w.dirs, w.files, w.size)
+        }
+    }
+    if w.is_json {
+        json.end(mut w.j)
+    } else {
+        text.finish(mut w.t)
+    }
+    if w.errors > 0 then 2 else 0
+}
