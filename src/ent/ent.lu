@@ -86,20 +86,21 @@ pub struct Meta {
 }
 
 /// One entry: its name's bytes (`nm`, the host's row), its type, a
-/// symlink's target type and target, the flags, the metadata when a flag
-/// stat'ed it, and in the built tree its children (indices into the
-/// walk's arena) or the error that stopped its descent.
+/// symlink's target type, the flags, the metadata when a flag stat'ed
+/// it, and in the built tree the error that stopped its descent. A
+/// symlink's target and a built directory's children live in the walk's
+/// side tables, `lnk` and `child` their indices there (-1: none), so an
+/// entry with neither carries no empty list (two allocations an entry,
+/// measured: docs/MAP.md).
 pub struct Ent {
     nm: List[byte],
     kind: int,
     ltype: int,
     flags: int,
-    lnk: List[byte],
-    has_lnk: bool,
+    lnk: int,
     st: Meta,
     has_st: bool,
-    child: List[int],
-    has_child: bool,
+    child: int,
     err: str,
 }
 
@@ -121,12 +122,10 @@ pub fn new_ent(take nm: List[byte], kind: int) -> Ent {
         kind: kind,
         ltype: -1,
         flags: 0,
-        lnk: List[byte](),
-        has_lnk: false,
+        lnk: -1,
         st: no_meta(),
         has_st: false,
-        child: List[int](),
-        has_child: false,
+        child: -1,
         err: "",
     }
 }
