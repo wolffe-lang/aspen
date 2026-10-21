@@ -1,0 +1,298 @@
+//! fromfile — `--fromfile` and `--fromtabfile` (C aspen `src/fromfile.c`,
+//! mirroring tree's file.c): a list of paths, or a tab-indented tree,
+//! read from a file (`.` is standard input) into a hierarchy of nodes,
+//! which the walk turns into entries for every renderer. Paths sharing a
+//! prefix share its nodes (tree's search()); a component followed by a
+//! `/` is a directory; under `--fflinks` a ` -> target` tail makes the
+//! last component a symlink.
+
+/// One node: its name, a symlink's target, whether it is a directory or
+/// a link, and its children by index into the reader's arena, in the
+/// order the input first named them.
+pub struct Node {
+    name: List[byte],
+    lnk: List[byte],
+    isdir: bool,
+    islink: bool,
+    kids: List[int],
+    index: Map[str, int],
+}
+
+/// The arena: node 0 is the dummy root whose children are the top level.
+pub struct Tree {
+    nodes: List[Node],
+    errs: List[str],
+}
+
+fn node(take name: List[byte]) -> Node {
+    Node {
+        name: name,
+        lnk: List[byte](),
+        isdir: false,
+        islink: false,
+        kids: List[int](),
+        index: Map[str, int](),
+    }
+}
+
+/// The key a name is found by among its siblings: its bytes, as a
+/// string of their numbers when they are not UTF-8.
+fn key(b: List[byte]) -> str {
+    let s = str_from_utf8(b) else |_| {
+        var t = "\u{0}"
+        for x in b {
+            t += "{x as int},"
+        }
+        return t
+    }
+    s
+}
+
+/// tree's search(): `name` among `parent`'s children, reused when there
+/// (a shared prefix), else appended in input order.
+fn search(mut t: Tree, parent: int, name: List[byte]) -> int {
+    let k = key(name)
+    let hit = t.nodes[parent].index[k] else -1
+    if hit >= 0 {
+        return hit
+    }
+    let id = t.nodes.len
+    (mut t.nodes).push(node(take copy name))
+    (mut t.nodes[parent].kids).push(id)
+    t.nodes[parent].index[k] = id
+    id
+}
+
+/// The lines `fgets` reads into tree's 64 KiB buffer: each ends at its
+/// newline or after 65,535 bytes.
+fn lines(b: List[byte]) -> List[List[byte]] {
+    var out = List[List[byte]]()
+    var cur = List[byte]()
+    for x in b {
+        (mut cur).push(x)
+        if x as int == 10 || cur.len == 65535 {
+            (mut out).push(cur)
+            cur = List[byte]()
+        }
+    }
+    if cur.len > 0 {
+        (mut out).push(cur)
+    }
+    out
+}
+
+/// The line without its trailing newlines and carriage returns, cut at
+/// a NUL as `strlen` is.
+fn strip_eol(raw: List[byte]) -> List[byte] {
+    var n = 0
+    while n < raw.len && raw[n] as int != 0 {
+        n += 1
+    }
+    while n > 0 && (raw[n - 1] as int == 10 || raw[n - 1] as int == 13) {
+        n -= 1
+    }
+    raw[0..n]
+}
+
+/// Where ` -> ` first occurs in `s`, or -1.
+fn arrow(s: List[byte]) -> int {
+    var i = 0
+    while i + 4 <= s.len {
+        if s[i] as int == 32 &&
+            s[i + 1] as int == 45 &&
+            s[i + 2] as int == 62 &&
+            s[i + 3] as int == 32 {
+            return i
+        }
+        i += 1
+    }
+    -1
+}
+
+fn is_dot(s: List[byte]) -> bool {
+    s.len == 1 && s[0] as int == 46
+}
+
+/// Read a path list (`src/fromfile.c:190`). tree's tokenizer keeps the
+/// separator that ended a directory component in a static (`nextpc`'s
+/// `prev`), so the next call answers a separator first, even across
+/// lines; that is mirrored (`prev`), and harmless.
+fn read_paths(mut t: Tree, text: List[byte], fflinks: bool) {
+    var prev = false
+    for raw in lines(text) {
+        if raw.len > 0 && raw[0] as int == 35 {
+            continue
+        }
+        var line = strip_eol(raw)
+        if line.len == 0 {
+            continue
+        }
+        var link = List[byte]()
+        var has_link = false
+        if fflinks {
+            let at = arrow(line)
+            if at >= 0 {
+                link = line[at + 4..line.len]
+                has_link = true
+                line = line[0..at]
+            }
+        }
+        var cwd = 0
+        var ent = -1
+        var p = 0
+        let n = line.len
+        loop {
+            // nextpc
+            if p >= n {
+                break
+            }
+            if prev {
+                prev = false
+                continue
+            }
+            if line[p] as int == 47 {
+                p += 1
+                continue
+            }
+            let s0 = p
+            while p < n && line[p] as int != 47 {
+                p += 1
+            }
+            let comp = line[s0..p]
+            let is_dir = p < n
+            if is_dir {
+                prev = true
+                p += 1
+            }
+            if is_dot(comp) {
+                if is_dir {
+                    continue
+                }
+                break
+            }
+            ent = search(mut t, cwd, comp)
+            if is_dir {
+                t.nodes[ent].isdir = true
+            }
+            cwd = ent
+            if !is_dir {
+                break
+            }
+        }
+        if ent >= 0 && has_link {
+            t.nodes[ent].isdir = false
+            t.nodes[ent].islink = true
+            t.nodes[ent].lnk = link
+        }
+    }
+}
+
+fn show(b: List[byte]) -> str {
+    str_from_utf8(b) else "?"
+}
+
+/// Read a tab-indented tree (`src/fromfile.c:236`): leading tabs give
+/// the depth; a line deeper than its parent allows is an orphan,
+/// reported and skipped.
+fn read_tabs(mut t: Tree, text: List[byte], fflinks: bool) {
+    var istack = List[int]()
+    var k = 0
+    while k < 2048 {
+        (mut istack).push(-1)
+        k += 1
+    }
+    var line_no = 0
+    var top_depth = 0
+    for raw in lines(text) {
+        line_no += 1
+        if raw.len > 0 && raw[0] as int == 35 {
+            continue
+        }
+        let line = strip_eol(raw)
+        if line.len == 0 {
+            continue
+        }
+        var tabs = 0
+        while tabs < line.len && line[tabs] as int == 9 {
+            tabs += 1
+        }
+        if tabs >= 2048 {
+            (mut t.errs).push(
+                "aspen: Tab depth exceeds maximum path depth ({tabs} >= 2048) on line {line_no}\n",
+            )
+            continue
+        }
+        var spath = line[tabs..line.len]
+        var link = List[byte]()
+        var has_link = false
+        if fflinks {
+            let at = arrow(spath)
+            if at >= 0 {
+                link = spath[at + 4..spath.len]
+                has_link = true
+                spath = spath[0..at]
+            }
+        }
+        if tabs > 0 && (tabs - 1 > top_depth || istack[tabs - 1] < 0) {
+            (mut t.errs).push(
+                "aspen: Orphaned file [{show(spath)}] on line {line_no}, check tab depth in file.\n",
+            )
+            continue
+        }
+        let parent = if tabs > 0 then istack[tabs - 1] else 0
+        let ent = search(mut t, parent, spath)
+        istack[tabs] = ent
+        if tabs > 0 {
+            t.nodes[istack[tabs - 1]].isdir = true
+        }
+        if has_link {
+            t.nodes[ent].isdir = false
+            t.nodes[ent].islink = true
+            t.nodes[ent].lnk = link
+        }
+        top_depth = tabs
+    }
+}
+
+fn read_stdin() -> List[byte] {
+    var got = List[byte]()
+    let fd = fs_open("/dev/stdin") else |_| {
+        return got
+    }
+    loop {
+        let chunk = fs_read_chunk(fd, 65536) else |_| {
+            break
+        }
+        for x in chunk {
+            (mut got).push(x)
+        }
+    }
+    fs_close(fd) else |_| {}
+    got
+}
+
+/// Read `arg` (`.` is standard input); `tabbed` is `--fromtabfile`.
+/// `opened` false when the file cannot be read.
+pub fn read(arg: str, tabbed: bool, fflinks: bool) -> (bool, Tree) {
+    var t = Tree { nodes: List[Node](), errs: List[str]() }
+    (mut t.nodes).push(node(take List[byte]()))
+    var text = List[byte]()
+    if arg == "." {
+        text = read_stdin()
+    } else {
+        var ok = true
+        text = fs_read_bytes(arg) else |_| {
+            ok = false
+            List[byte]()
+        }
+        if !ok {
+            return (false, t)
+        }
+    }
+    if tabbed {
+        read_tabs(mut t, text, fflinks)
+    } else {
+        read_paths(mut t, text, fflinks)
+    }
+    (true, t)
+}
