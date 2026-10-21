@@ -195,11 +195,15 @@ fn meta(mut h: Html, o: opts.Opts, st: ent.Meta, has: bool) {
     out.s(mut h.o, "&nbsp;&nbsp;&nbsp;&nbsp;")
 }
 
-fn cls(kind: int, exe: bool) -> str {
+/// The CSS class (`src/render/html.c:122`): as tree has it (measured in
+/// the oracle's container), `DIR` for a directory, then `EXEC` for any
+/// execute bit, a fifo's and a socket's included, then the type; a link
+/// is classed by what it points to, a dangling one `NORM`.
+fn cls(kind: int, mode: int) -> str {
     if kind == 1 {
         return "DIR"
     }
-    if exe {
+    if mode & 73 != 0 {
         return "EXEC"
     }
     if kind == 4 {
@@ -219,7 +223,7 @@ fn anchor(
     mut h: Html,
     o: opts.Opts,
     kind: int,
-    exe: bool,
+    mode: int,
     infos: List[List[byte]],
     has_info: bool,
     dir: List[byte],
@@ -233,7 +237,7 @@ fn anchor(
     out.s(mut h.o, "<a")
     if o.forcecolor {
         out.s(mut h.o, " class=\"")
-        out.s(mut h.o, cls(if isdir then 1 else kind, exe))
+        out.s(mut h.o, cls(if isdir then 1 else kind, mode))
         out.c(mut h.o, 34)
     }
     if has_info {
@@ -290,10 +294,14 @@ pub fn root(mut h: Html, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st
     h.dirlen = pb.len
     out.c(mut h.o, 9)
     meta(mut h, o, st, has_st)
+    // the root is classed and typed by its lstat (tree: a symlink root
+    // gets no trailing "/" and its link's mode; C aspen types it a
+    // directory unless a flag stat'ed it, `src/render/html.c:280`)
+    let known = st.kind != 2
     if !failed || has_st {
-        let isdir = if has_st then st.kind == 1 else true
+        let isdir = if known then st.kind == 1 else true
         let none = List[List[byte]]()
-        anchor(mut h, o, 1, false, none, false, pb, pb.len, pb, 0, pb.len, isdir, 1)
+        anchor(mut h, o, st.kind, st.mode, none, false, pb, pb.len, pb, 0, pb.len, isdir, 1)
     } else {
         out.s(mut h.o, "<a>")
         encode(mut h.o, pb, 0, pb.len)
@@ -335,18 +343,26 @@ pub fn entry(
     let cn = e.cname >= 0
     let nlen = if cn then a.cnames[e.cname].len - 1 else e.nm.len - 1
     let dirlen = pb.len - nlen - 1
-    let exe = e.flags & ent.f_exec() != 0
+    // the class reads what a link points to
+    var ck = e.kind
+    var cm = if e.has_st then e.st.mode else 0
+    if e.lnk >= 0 {
+        ck = if e.flags & ent.f_orphan() != 0 then 0 else e.ltype
+        cm = if e.flags & ent.f_orphan() != 0 then 0 else e.lmode
+    } else if e.flags & ent.f_exec() != 0 {
+        cm = cm | 73
+    }
     let none = List[List[byte]]()
     let infos = if e.info >= 0 then a.infos[e.info] else none
     let hi = e.info >= 0
     if o.fullpath {
-        anchor(mut h, o, e.kind, exe, infos, hi, pb, dirlen, pb, 0, pb.len, dl, rd)
+        anchor(mut h, o, ck, cm, infos, hi, pb, dirlen, pb, 0, pb.len, dl, rd)
     } else if cn {
         anchor(
             mut h,
             o,
-            e.kind,
-            exe,
+            ck,
+            cm,
             infos,
             hi,
             pb,
@@ -358,7 +374,7 @@ pub fn entry(
             rd,
         )
     } else {
-        anchor(mut h, o, e.kind, exe, infos, hi, pb, dirlen, e.nm, 1, e.nm.len, dl, rd)
+        anchor(mut h, o, ck, cm, infos, hi, pb, dirlen, e.nm, 1, e.nm.len, dl, rd)
     }
     out.maybe(mut h.o)
 }
