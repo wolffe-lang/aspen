@@ -7,7 +7,10 @@
 #   tools/in-container COMMAND...
 #
 # podman (kasumi) or docker (CI, ASPEN_ENGINE=docker). The image is tagged by the
-# Containerfile's own digest, so an edit to it builds a new one.
+# Containerfile's own digest, so an edit to it builds a new one. Cores are
+# off (`ulimit -c 0`): a rootless container's core lands in the HOST's
+# store through its piped core_pattern, and tree 2.3.2 aborts on C aspen's
+# 64 KiB --fromfile line (its own buffer overflow; notes/ap01-…).
 set -eu
 ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # ASPEN_ENGINE picks one (CI sets docker: its runner has both)
@@ -36,4 +39,4 @@ fi
 # shellcheck disable=SC2086
 exec $eng run --rm $as_user -v "$ASPEN_ROOT:$ASPEN_ROOT" -w "$ASPEN_ROOT" \
     --tmpfs /tmp:rw,exec,size=4g -e TZ=UTC -e HOME=/tmp -e TMPDIR=/tmp \
-    "$image" sh -c "$*"
+    "$image" sh -c "ulimit -c 0; $*"
