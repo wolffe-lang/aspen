@@ -28,6 +28,7 @@ use infofile
 use json
 use lines
 use opts
+use out
 use std.os
 use text
 use vers
@@ -143,6 +144,12 @@ fn want_st(o: opts.Opts) -> bool {
     meta_wanted(o) || sort_needs_stat(o) || o.colorize
 }
 
+/// Does an entry's owners or identity get read (`-u`, `-g`, `--inodes`,
+/// `--device`, `-x`, `-l`)?
+fn need_ids(o: opts.Opts) -> bool {
+    o.userflag || o.groupflag || o.inodeflag || o.devflag || o.xdev || o.follow
+}
+
 /// The type-only needs of a non-link (`nonlink_needs_stat`): `-F`'s exec
 /// bit, `-x`'s device, `-l`'s identity.
 fn nonlink_needs(t: int, o: opts.Opts) -> bool {
@@ -204,15 +211,17 @@ fn join(path: str, nm: List[byte]) -> str {
 /// The name an entry shows: `--condense`'s joined chain, else its own,
 /// as a row (byte 0 a placeholder, the name after it).
 fn shown(a: ent.Arena, e: ent.Ent) -> List[byte] {
-    if e.cname >= 0 {
-        return copy a.cnames[e.cname]
+    let ci = ent.cname_of(a, e)
+    if ci >= 0 {
+        return copy a.cnames[ci]
     }
     copy e.nm
 }
 
 fn join_shown(path: str, a: ent.Arena, e: ent.Ent) -> str {
-    if e.cname >= 0 {
-        return "{path}/{name_str(a.cnames[e.cname])}"
+    let ci = ent.cname_of(a, e)
+    if ci >= 0 {
+        return "{path}/{name_str(a.cnames[ci])}"
     }
     join(path, e.nm)
 }
@@ -258,9 +267,11 @@ fn read_level(
     o: opts.Opts,
     path: str,
     take rows: List[List[byte]],
+    take into: List[ent.Ent],
     suppress: bool,
 ) -> List[ent.Ent] {
     let want = want_st(o)
+    let nids = need_ids(o)
     let pats = o.patterns.len > 0
     let ipats = o.ipatterns.len > 0
     let gits = o.gitignore && w.igs.len > 0
@@ -275,9 +286,8 @@ fn read_level(
         }
         rs = rev
     }
-    var ev = List[ent.Ent]()
+    var ev = into
     var pend = List[int]()
-    var pp = List[str]()
     while rs.len > 0 {
         let r = (mut rs).pop() else List[byte]()
         if r.len < 2 {
@@ -303,8 +313,11 @@ fn read_level(
             have = true
             t = wds[0]
             e.kind = t
-            e.ino = wds[10]
-            e.dev = wds[9]
+            if nids {
+                let xi = ent.ensure_x(mut w.a, mut e)
+                w.a.xs[xi].ids = ent.ids_of(wds)
+                w.a.xs[xi].has_ids = true
+            }
             if t == ent.reg() && is_exec(wds[4]) {
                 e.flags = e.flags | ent.f_exec()
             }
@@ -323,6 +336,11 @@ fn read_level(
                 }
                 e.st = ent.meta_of(lw)
                 e.has_st = true
+                if nids {
+                    let xi = ent.ensure_x(mut w.a, mut e)
+                    w.a.xs[xi].ids = ent.ids_of(lw)
+                    w.a.xs[xi].has_ids = true
+                }
             }
             let target = fs_read_link(lp) else |_| {
                 var m = List[byte]()
@@ -333,6 +351,7 @@ fn read_level(
             }
             e.lnk = w.a.lnks.len
             (mut w.a.lnks).push(target)
+            (mut w.a.lstats).push(ent.Lst { mode: 0, ino: 0, dev: 0 })
             var orphan = false
             let tw = fs_stat(lp) else |_| {
                 orphan = true
@@ -342,9 +361,7 @@ fn read_level(
                 e.flags = e.flags | ent.f_orphan()
             } else {
                 e.ltype = tw[0]
-                e.lmode = tw[4]
-                e.ino = tw[10]
-                e.dev = tw[9]
+                w.a.lstats[e.lnk] = ent.Lst { mode: tw[4], ino: tw[10], dev: tw[9] }
                 if e.ltype == ent.reg() && is_exec(tw[4]) {
                     e.flags = e.flags | ent.f_lexec()
                 }
@@ -388,19 +405,19 @@ fn read_level(
                 o.ignorecase,
             )
             if fk >= 0 {
-                e.info = w.a.infos.len
+                let xi = ent.ensure_x(mut w.a, mut e)
+                w.a.xs[xi].info = w.a.infos.len
                 (mut w.a.infos).push(copy w.infs[fk].comments[ci].desc)
             }
         }
         if deferred {
             // stat'ed after the filters, as a batch (`src/traverse.c:583`)
             (mut pend).push(ev.len)
-            (mut pp).push(join(path, e.nm))
         }
         (mut ev).push(e)
     }
-    if pp.len > 0 {
-        stat_batch(mut w, o, mut ev, pend, pp, want)
+    if pend.len > 0 {
+        stat_batch(mut w, o, mut ev, pend, path, want)
     }
     ev
 }
@@ -428,6 +445,101 @@ fn need_of(o: opts.Opts) -> Need {
     }
 }
 
+/// What a stat task answers per name (`stat_batch`): the words, the
+/// column, or (`lean`) the column alone.
+struct Words {
+    mode: bool,
+    size: bool,
+    mtime: bool,
+    ctime: bool,
+    ids: bool,
+    ident: bool,
+    precol: bool,
+    lean: bool,
+}
+
+/// One chunk of a level's stats: `names` (each a length byte and its
+/// bytes) under `dir`, answered as one text, a line per name.
+fn stat_chunk(names: List[byte], dir: str, opt: opts.Opts, mut cs: info.Cols, f: Words) -> str {
+    var b = List[byte]()
+    var col = out.to_fd(-1)
+    // one path buffer, the directory and a slash kept, each name put
+    // after them in turn: a path costs one `str`, not three copies
+    var pb = List[byte]()
+    for x in dir.bytes() {
+        (mut pb).push(x)
+    }
+    (mut pb).push(47 as byte)
+    let base = pb.len
+    var i = 0
+    let nn = names.len
+    while i < nn {
+        let ln = names[i] as int
+        while pb.len > base {
+            let _ = (mut pb).pop() else 0 as byte
+        }
+        var k = i + 1
+        let end = i + 1 + ln
+        while k < end {
+            (mut pb).push(names[k])
+            k += 1
+        }
+        i = end
+        let p = str_from_utf8(pb) else "\u{fffd}/"
+        var ok = true
+        let sw = fs_lstat(p) else |_| {
+            ok = false
+            List[int]()
+        }
+        if ok && f.lean {
+            while col.buf.len > 0 {
+                let _ = (mut col.buf).pop() else 0 as byte
+            }
+            info.put_fill(mut col, opt, mut cs, ent.meta_of(sw), ent.ids_of(sw), true)
+            put_word(mut b, col.buf.len)
+            for x in col.buf {
+                (mut b).push(x)
+            }
+        } else if ok {
+            put_word(mut b, sw[0])
+            if f.mode {
+                put_word(mut b, sw[4])
+            }
+            if f.size {
+                put_word(mut b, sw[1])
+            }
+            if f.mtime {
+                put_word(mut b, sw[14])
+            }
+            if f.ctime {
+                put_word(mut b, sw[16])
+            }
+            if f.ids {
+                put_word(mut b, sw[6])
+                put_word(mut b, sw[7])
+            }
+            if f.ident {
+                put_word(mut b, sw[10])
+                put_word(mut b, sw[9])
+            }
+            if f.precol {
+                while col.buf.len > 0 {
+                    let _ = (mut col.buf).pop() else 0 as byte
+                }
+                info.put_fill(mut col, opt, mut cs, ent.meta_of(sw), ent.ids_of(sw), true)
+                put_word(mut b, col.buf.len)
+                for x in col.buf {
+                    (mut b).push(x)
+                }
+            }
+        } else {
+            (mut b).push(120 as byte)
+        }
+        (mut b).push(10 as byte)
+    }
+    str_from_utf8(b) else ""
+}
+
 /// The deferred stats of one level (`src/traverse.c:393`): serial below
 /// C aspen's threshold of 384 (`ASP_STAT_PAR_MIN`); above it on the
 /// pool, sized at the first batch that crosses the threshold to one task
@@ -436,16 +548,22 @@ fn need_of(o: opts.Opts) -> Need {
 /// before any stat (the order is the sort's), so the split changes only
 /// the time. An entry whose stat fails is dropped, in order, and counted
 /// an error.
+///
+/// On the pool each task builds its paths from the directory and its
+/// chunk's names, and in the text format (no `--du`, which changes the
+/// sizes after) it formats each entry's bracket column too, the bytes
+/// the renderer prints: the main thread keeps the chunk's answer and the
+/// column's place in it (the `-s` ratchet, notes/ap01-the-second-light.md).
 fn stat_batch(
     mut w: Walk,
     o: opts.Opts,
     mut ev: List[ent.Ent],
     pend: List[int],
-    pp: List[str],
+    path: str,
     want: bool,
 ) {
-    let n = pp.len
-    let nd = need_of(o)
+    let n = pend.len
+    let nids = need_ids(o)
     if w.want_pool && n >= 384 {
         w.want_pool = false
         var k = (n + 255) / 256
@@ -471,12 +589,12 @@ fn stat_batch(
         var k = 0
         while k < n {
             var ok = true
-            let sw = fs_lstat(pp[k]) else |_| {
+            let sw = fs_lstat(join(path, ev[pend[k]].nm)) else |_| {
                 ok = false
                 List[int]()
             }
             if ok {
-                apply(mut ev, pend[k], ent.meta_of(sw), want)
+                apply(mut ev, mut w.a, pend[k], ent.meta_of(sw), ent.ids_of(sw), nids, want)
             } else {
                 ev[pend[k]].flags = ev[pend[k]].flags | ent.f_stat_failed()
                 failed = true
@@ -484,63 +602,79 @@ fn stat_batch(
             k += 1
         }
     } else {
-        // each task stats a contiguous chunk and answers with one message:
-        // its chunk number and a line per path (the words `nd` names, or
-        // "x" for a failure); a channel carries no list
+        // each task answers with one message: its chunk number and a line
+        // per name (the words below, then the column's length and bytes
+        // when `precol`, or "x" for a failure); a channel carries no list
+        let precol = want && w.fmt == opts.out_unix() && !o.duflag && !w.env.debug && info.any(o)
+        // lean: the column is all the main thread needs (no -F, no colour,
+        // no sort by a stat'ed key, no -x or -l): each line is the
+        // column's length and bytes, and the entry keeps only their place
+        let lean = precol &&
+            !o.classify &&
+            !o.colorize &&
+            !sort_needs_stat(o) &&
+            !o.xdev &&
+            !o.follow
+        let nd = need_of(o)
+        let w_mode = nd.mode && !precol || o.classify || o.colorize
+        let w_size = nd.size && !precol || o.sort == opts.sort_size()
+        let w_mtime = nd.mtime && !precol || o.sort == opts.sort_mtime()
+        let w_ctime = nd.ctime && !precol || o.sort == opts.sort_ctime()
+        let w_ids = nd.ids && !precol
+        let w_ident = nd.ident && !precol || o.xdev || o.follow
+        let fl = Words {
+            mode: w_mode,
+            size: w_size,
+            mtime: w_mtime,
+            ctime: w_ctime,
+            ids: w_ids,
+            ident: w_ident,
+            precol: precol,
+            lean: lean,
+        }
         let ch = channel[(int, str)](workers)
-        let w_mode = nd.mode
-        let w_size = nd.size
-        let w_mtime = nd.mtime
-        let w_ctime = nd.ctime
-        let w_ids = nd.ids
-        let w_ident = nd.ident
         scope s {
+            // the chunks' names, each a length byte and its bytes (a name
+            // is at most 255 bytes); the main thread stats chunk 0 itself,
+            // as C aspen's submitting thread is one of its pool's lanes
+            // (`src/pool.c:152`)
+            var mine = List[byte]()
             var c = 0
             while c < workers {
                 let lo = c * n / workers
                 let hi = (c + 1) * n / workers
-                let chunk = pp[lo..hi]
-                let id = c
-                s.spawn(fn() {
-                    var b = List[byte]()
-                    for p in chunk {
-                        var ok = true
-                        let sw = fs_lstat(p) else |_| {
-                            ok = false
-                            List[int]()
-                        }
-                        if ok {
-                            put_word(mut b, sw[0])
-                            if w_mode {
-                                put_word(mut b, sw[4])
-                            }
-                            if w_size {
-                                put_word(mut b, sw[1])
-                            }
-                            if w_mtime {
-                                put_word(mut b, sw[14])
-                            }
-                            if w_ctime {
-                                put_word(mut b, sw[16])
-                            }
-                            if w_ids {
-                                put_word(mut b, sw[6])
-                                put_word(mut b, sw[7])
-                            }
-                            if w_ident {
-                                put_word(mut b, sw[10])
-                                put_word(mut b, sw[9])
-                            }
-                        } else {
-                            (mut b).push(120 as byte)
-                        }
-                        (mut b).push(10 as byte)
+                var names = List[byte]()
+                var k = lo
+                while k < hi {
+                    let ek = pend[k]
+                    let ln = ev[ek].nm.len - 1
+                    (mut names).push(ln as byte)
+                    var x = 1
+                    while x <= ln {
+                        (mut names).push(ev[ek].nm[x])
+                        x += 1
                     }
-                    let text = str_from_utf8(b) else ""
-                    ch.send((id, text)) else |_| {}
-                })
+                    k += 1
+                }
+                if c == 0 {
+                    mine = names
+                } else {
+                    let id = c
+                    let dir = path
+                    let opt = copy o
+                    let cols0 = copy w.t.cols
+                    let f0 = copy fl
+                    s.spawn(fn() {
+                        var cs = copy cols0
+                        let text = stat_chunk(names, dir, opt, mut cs, f0)
+                        ch.send((id, text)) else |_| {}
+                    })
+                }
                 c += 1
             }
+            var cs = copy w.t.cols
+            let text0 = stat_chunk(mine, path, o, mut cs, fl)
+            ch.send((0, text0)) else |_| {}
             var got = 0
             while got < workers {
                 var live = true
@@ -551,6 +685,10 @@ fn stat_batch(
                 if !live {
                     break
                 }
+                let tix = w.a.coltxt.len
+                if precol {
+                    (mut w.a.coltxt).push(text)
+                }
                 let lo = id * n / workers
                 var k = lo
                 var i = 0
@@ -560,8 +698,13 @@ fn stat_batch(
                         ev[pend[k]].flags = ev[pend[k]].flags | ent.f_stat_failed()
                         failed = true
                         i += 2
+                    } else if lean {
+                        let (cl, j) = word(text, i)
+                        ev[pend[k]].col = pack_col(tix, j, cl)
+                        i = j + cl + 1
                     } else {
                         var m = ent.no_meta()
+                        var ids = ent.no_ids()
                         let (v0, j0) = word(text, i)
                         m.kind = v0
                         i = j0
@@ -588,19 +731,25 @@ fn stat_batch(
                         if w_ids {
                             let (v1, j1) = word(text, i)
                             let (v2, j2) = word(text, j1)
-                            m.uid = v1
-                            m.gid = v2
+                            ids.uid = v1
+                            ids.gid = v2
                             i = j2
                         }
                         if w_ident {
                             let (v1, j1) = word(text, i)
                             let (v2, j2) = word(text, j1)
-                            m.ino = v1
-                            m.dev = v2
+                            ids.ino = v1
+                            ids.dev = v2
                             i = j2
                         }
+                        let e = pend[k]
+                        if precol {
+                            let (cl, j) = word(text, i)
+                            ev[e].col = pack_col(tix, j, cl)
+                            i = j + cl
+                        }
                         i += 1
-                        apply(mut ev, pend[k], m, want)
+                        apply(mut ev, mut w.a, e, m, ids, nids, want)
                     }
                     k += 1
                 }
@@ -623,6 +772,13 @@ fn stat_batch(
         }
         ev = kept
     }
+}
+
+/// A column's place in a chunk's text, as one `int` (`Ent.col`).
+fn pack_col(chunk: int, at: int, len: int) -> int {
+    let full: int = 17592186044416
+    let mega: int = 1048576
+    chunk * full + at * mega + len
 }
 
 /// The number at `text[i..]` and the index after the space that ends it.
@@ -666,9 +822,20 @@ fn put_word(mut b: List[byte], v: int) {
 /// One stat's answer into entry `k` (`stat_one`, `src/traverse.c:313`):
 /// the identity, the exec bit for `-F`, and the metadata when a flag
 /// wants it.
-fn apply(mut ev: List[ent.Ent], k: int, m: ent.Meta, want: bool) {
-    ev[k].ino = m.ino
-    ev[k].dev = m.dev
+fn apply(
+    mut ev: List[ent.Ent],
+    mut a: ent.Arena,
+    k: int,
+    m: ent.Meta,
+    ids: ent.Ids,
+    nids: bool,
+    want: bool,
+) {
+    if nids {
+        let xi = ent.ensure_x(mut a, mut ev[k])
+        a.xs[xi].ids = copy ids
+        a.xs[xi].has_ids = true
+    }
     if ev[k].kind == ent.reg() && is_exec(m.mode) {
         ev[k].flags = ev[k].flags | ent.f_exec()
     }
@@ -888,7 +1055,8 @@ fn decide(mut w: Walk, o: opts.Opts, e: ent.Ent, depth: int) -> (bool, str, bool
     // a directory halted at the -L boundary still blocks a later link to
     // it (audit A2)
     if o.follow {
-        let k = ident(e.ino, e.dev)
+        let (ino, dev) = ent.ident(w.a, e)
+        let k = ident(ino, dev)
         if w.seen[k] else false {
             if e.kind == ent.lnk() {
                 post = "recursive, not followed"
@@ -898,8 +1066,11 @@ fn decide(mut w: Walk, o: opts.Opts, e: ent.Ent, depth: int) -> (bool, str, bool
             w.seen[k] = true
         }
     }
-    if o.xdev && e.kind == ent.dir() && e.dev != w.root_dev {
-        return (false, post, false)
+    if o.xdev && e.kind == ent.dir() {
+        let (_, dev) = ent.ident(w.a, e)
+        if dev != w.root_dev {
+            return (false, post, false)
+        }
     }
     if o.level >= 0 && depth >= o.level {
         return (false, "", true)
@@ -943,11 +1114,11 @@ fn pop_dir(mut w: Walk, g: bool, f: bool) {
 
 // ---- the line renderers (`struct line_renderer`) ----
 
-fn l_root(mut w: Walk, o: opts.Opts, path: str, err: str, st: ent.Meta, has: bool) {
+fn l_root(mut w: Walk, o: opts.Opts, path: str, err: str, st: ent.Meta, ids: ent.Ids, has: bool) {
     if w.fmt == opts.out_html() {
-        html.root(mut w.h, o, path, err, st, has)
+        html.root(mut w.h, o, path, err, st, ids, has)
     } else {
-        text.root(mut w.t, o, path, err, st, has)
+        text.root(mut w.t, o, path, err, st, ids, has)
     }
 }
 
@@ -978,10 +1149,11 @@ fn l_newline(mut w: Walk) {
 }
 
 fn l_comment(mut w: Walk, o: opts.Opts, e: ent.Ent, depth: int) {
-    if e.info < 0 || w.fmt == opts.out_html() {
+    let ii = ent.info_of(w.a, e)
+    if ii < 0 || w.fmt == opts.out_html() {
         return
     }
-    text.comment(mut w.t, w.a.infos[e.info], depth)
+    text.comment(mut w.t, w.a.infos[ii], depth)
 }
 
 /// `-R`: re-render `path`'s subtree into `path/00Tree.html` in the same
@@ -1002,7 +1174,7 @@ fn rerun(w: Walk, o: opts.Opts, path: str) -> bool {
 
 fn walk_dir(mut w: Walk, o: opts.Opts, path: str, take rows: List[List[byte]], depth: int) {
     let (g, f) = push_dir(mut w, o, path)
-    let ev = read_level(mut w, o, path, take rows, false)
+    let ev = read_level(mut w, o, path, take rows, take List[ent.Ent](), false)
     let ord = order(o, ev)
     let n = ord.len
     text.begin_level(mut w.t, o, depth)
@@ -1075,7 +1247,7 @@ fn build_level(
     suppress: bool,
 ) -> Built {
     let (g, f) = push_dir(mut w, o, path)
-    let ev = read_level(mut w, o, path, take rows, suppress)
+    let ev = read_level(mut w, o, path, take rows, take List[ent.Ent](), suppress)
     let ord = order(o, ev)
     if o.filelimit > 0 && ev.len > o.filelimit {
         // DEVIATION D1: a tripped filelimit is an error in every mode
@@ -1153,13 +1325,17 @@ fn condense_entry(mut w: Walk, o: opts.Opts, k: int) {
             (mut joined).push(tail[i])
             i += 1
         }
-        w.a.ents[k].cname = w.a.cnames.len
+        if w.a.ents[k].x < 0 {
+            w.a.ents[k].x = ent.new_x(mut w.a)
+        }
+        let xi = w.a.ents[k].x
+        w.a.xs[xi].cname = w.a.cnames.len
         (mut w.a.cnames).push(joined)
         if o.duflag && w.a.ents[k].has_st && w.a.ents[only].has_st {
             w.a.ents[k].st.size = w.a.ents[k].st.size + w.a.ents[only].st.size
         }
         w.a.ents[k].child = w.a.ents[only].child
-        w.a.ents[k].cond = w.a.ents[k].cond + 1 + w.a.ents[only].cond
+        w.a.xs[xi].cond = w.a.xs[xi].cond + 1 + ent.cond_of(w.a, w.a.ents[only])
     }
 }
 
@@ -1221,7 +1397,7 @@ fn emit_level(mut w: Walk, o: opts.Opts, path: str, arr: List[int], depth: int) 
         let e = copy w.a.ents[k]
         let dl = ent.dir_like(e)
         if dl {
-            w.dirs += 1 + e.cond
+            w.dirs += 1 + ent.cond_of(w.a, e)
         } else {
             w.files += 1
         }
@@ -1233,7 +1409,7 @@ fn emit_level(mut w: Walk, o: opts.Opts, path: str, arr: List[int], depth: int) 
             o.rerun &&
             o.level >= 0 &&
             depth >= o.level &&
-            !(o.xdev && e.kind == ent.dir() && e.dev != w.root_dev) {
+            !(o.xdev && e.kind == ent.dir() && ent.ids(w.a, e).dev != w.root_dev) {
             if !rerun(w, o, cp) {
                 w.errors += 1
             }
@@ -1267,16 +1443,16 @@ fn strip_slashes(p: str) -> str {
     s
 }
 
-fn root_meta(path: str) -> (bool, ent.Meta) {
+fn root_meta(path: str) -> (bool, ent.Meta, ent.Ids) {
     var ok = true
     let m = fs_lstat(path) else |_| {
         ok = false
         List[int]()
     }
     if !ok {
-        return (false, ent.no_meta())
+        return (false, ent.no_meta(), ent.no_ids())
     }
-    (true, ent.meta_of(m))
+    (true, ent.meta_of(m), ent.ids_of(m))
 }
 
 fn t_tree(
@@ -1284,6 +1460,7 @@ fn t_tree(
     o: opts.Opts,
     root: str,
     st: ent.Meta,
+    ids: ent.Ids,
     has: bool,
     opened: bool,
     limit: str,
@@ -1291,11 +1468,11 @@ fn t_tree(
     last: bool,
 ) {
     if w.fmt == opts.out_json() {
-        let (a, b) = json.tree(mut w.j, o, root, st, has, opened, limit, w.a, top, last)
+        let (a, b) = json.tree(mut w.j, o, root, st, ids, has, opened, limit, w.a, top, last)
         w.dirs += a
         w.files += b
     } else {
-        let (a, b) = xml.tree(mut w.x, o, root, st, has, opened, limit, w.a, top, last)
+        let (a, b) = xml.tree(mut w.x, o, root, st, ids, has, opened, limit, w.a, top, last)
         w.dirs += a
         w.files += b
     }
@@ -1366,11 +1543,11 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
         // tree lstats a root it cannot open: one that exists is shown
         // "[error opening dir]" and counted as one file, status 0; one
         // that does not is an error, status 2 (`src/traverse.c:1268`)
-        let (has, st) = root_meta(root)
+        let (has, st, rids) = root_meta(root)
         if is_tree_fmt(w) {
-            t_tree(mut w, o, dr, st, has, false, "", List[int](), last_root)
+            t_tree(mut w, o, dr, st, rids, has, false, "", List[int](), last_root)
         } else {
-            l_root(mut w, o, dr, "error opening dir", st, has)
+            l_root(mut w, o, dr, "error opening dir", st, rids, has)
         }
         if has {
             w.files += 1
@@ -1439,12 +1616,14 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
     // `src/render/json.c:294`; docs/MAP.md §5)
     var has_st = false
     var st = ent.no_meta()
+    var rids = ent.no_ids()
     let rstat = root_needs_stat(o)
     if rstat || is_tree_fmt(w) || w.fmt == opts.out_html() {
-        let (h, s) = root_meta(root)
+        let (h, s, si) = root_meta(root)
         has_st = h && rstat
         if h {
             let kind = s.kind
+            rids = si
             st = s
             if !rstat {
                 st = ent.no_meta()
@@ -1457,9 +1636,9 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
         if b.limit.len > 0 {
             // SR-2.12: the root itself over --filelimit, one directory
             if is_tree_fmt(w) {
-                t_tree(mut w, o, dr, st, has_st, true, b.limit, List[int](), last_root)
+                t_tree(mut w, o, dr, st, rids, has_st, true, b.limit, List[int](), last_root)
             } else {
-                l_root(mut w, o, dr, b.limit, st, has_st)
+                l_root(mut w, o, dr, b.limit, st, rids, has_st)
                 w.dirs += 1
             }
             return
@@ -1483,9 +1662,9 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
             }
         }
         if is_tree_fmt(w) {
-            t_tree(mut w, o, dr, st, has_st, true, "", top, last_root)
+            t_tree(mut w, o, dr, st, rids, has_st, true, "", top, last_root)
         } else {
-            l_root(mut w, o, dr, "", st, has_st)
+            l_root(mut w, o, dr, "", st, rids, has_st)
             if top.len > 0 {
                 w.dirs += 1
             }
@@ -1494,7 +1673,7 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
         return
     }
     let before = w.dirs + w.files
-    l_root(mut w, o, dr, "", st, has_st)
+    l_root(mut w, o, dr, "", st, rids, has_st)
     walk_dir(mut w, o, cpath, take rows, 1)
     if w.dirs + w.files > before {
         w.dirs += 1
@@ -1582,7 +1761,7 @@ fn synth_level(
 
 fn root_fromfile(mut w: Walk, o: opts.Opts, arg: str, last_root: bool) {
     // the root's metadata is the input file's own lstat, its size shown 0
-    let (has, st0) = root_meta(arg)
+    let (has, st0, fids) = root_meta(arg)
     var st = st0
     st.size = 0
     let dr = if o.fullpath then strip_slashes(arg) else arg
@@ -1592,9 +1771,9 @@ fn root_fromfile(mut w: Walk, o: opts.Opts, arg: str, last_root: bool) {
     }
     if !has {
         if is_tree_fmt(w) {
-            t_tree(mut w, o, dr, st, false, false, "", List[int](), last_root)
+            t_tree(mut w, o, dr, st, fids, false, false, "", List[int](), last_root)
         } else {
-            l_root(mut w, o, dr, "error opening dir", st, false)
+            l_root(mut w, o, dr, "error opening dir", st, fids, false)
         }
         w.errors += 1
         return
@@ -1613,9 +1792,9 @@ fn root_fromfile(mut w: Walk, o: opts.Opts, arg: str, last_root: bool) {
         w.size += dusum
     }
     if is_tree_fmt(w) {
-        t_tree(mut w, o, dr, st, true, true, "", top, last_root)
+        t_tree(mut w, o, dr, st, fids, true, true, "", top, last_root)
     } else {
-        l_root(mut w, o, dr, "", st, true)
+        l_root(mut w, o, dr, "", st, fids, true)
         w.dirs += 1
         emit_level(mut w, o, dr, top, 1)
     }
