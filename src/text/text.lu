@@ -22,11 +22,20 @@ pub struct Text {
     last: List[bool],
     zone: clock.Zone,
     now: int,
+    debug: bool,
 }
 
 /// A renderer writing to descriptor `fd`.
 pub fn new(fd: int, utf8: bool, take ln: lines.Lines, take zone: clock.Zone, now: int) -> Text {
-    Text { o: out.to_fd(fd), utf8: utf8, ln: ln, last: List[bool](), zone: zone, now: now }
+    Text {
+        o: out.to_fd(fd),
+        utf8: utf8,
+        ln: ln,
+        last: List[bool](),
+        zone: zone,
+        now: now,
+        debug: false,
+    }
 }
 
 fn is_exec(mode: int) -> bool {
@@ -83,6 +92,9 @@ fn meta(mut t: Text, o: opts.Opts, st: ent.Meta, has: bool) {
 
 /// The root line (`src/render/unix.c:225`).
 pub fn root(mut t: Text, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st: bool) {
+    if t.debug {
+        return
+    }
     let failed = err.len > 0
     meta(mut t, o, st, has_st)
     name.put_str(mut t.o, path, t.utf8)
@@ -132,6 +144,10 @@ fn indent(mut t: Text, depth: int, is_last: bool) {
 /// One entry, without its newline (`src/render/unix.c:268`). `path` is
 /// the entry's full path, printed in place of the name under `-f`.
 pub fn entry(mut t: Text, o: opts.Opts, e: ent.Ent, path: str, depth: int, is_last: bool) {
+    if t.debug {
+        debug_entry(mut t, e, path)
+        return
+    }
     indent(mut t, depth, is_last)
     meta(mut t, o, e.st, e.has_st)
     if o.fullpath {
@@ -158,8 +174,32 @@ pub fn entry(mut t: Text, o: opts.Opts, e: ent.Ent, path: str, depth: int, is_la
     out.maybe(mut t.o)
 }
 
+/// C aspen's discovery hook for its own tests (`--asp-debug-walk`,
+/// `src/main.c:33`): a type letter, a tab and the entry's path, nothing
+/// else; `tests/golden/walk.sh` compares the set with tree's.
+fn debug_entry(mut t: Text, e: ent.Ent, path: str) {
+    let c = match e.kind {
+        1 => "d",
+        0 => "f",
+        3 => "l",
+        4 => "p",
+        5 => "s",
+        6 => "c",
+        7 => "b",
+        _ => "u",
+    }
+    out.s(mut t.o, c)
+    out.c(mut t.o, 9)
+    out.s(mut t.o, path)
+    out.c(mut t.o, 10)
+    out.maybe(mut t.o)
+}
+
 /// `  [msg]` (`src/render/unix.c:347`).
 pub fn error(mut t: Text, msg: str) {
+    if t.debug {
+        return
+    }
     out.s(mut t.o, "  [")
     out.s(mut t.o, msg)
     out.c(mut t.o, 93)
@@ -167,6 +207,9 @@ pub fn error(mut t: Text, msg: str) {
 
 /// End the current line.
 pub fn newline(mut t: Text) {
+    if t.debug {
+        return
+    }
     out.c(mut t.o, 10)
     out.maybe(mut t.o)
 }
@@ -174,6 +217,9 @@ pub fn newline(mut t: Text) {
 /// The report (`src/render/unix.c:362`); the caller skips it under
 /// `--noreport`.
 pub fn report(mut t: Text, o: opts.Opts, dirs: int, files: int, size: int) {
+    if t.debug {
+        return
+    }
     out.c(mut t.o, 10)
     if o.duflag {
         out.s(mut t.o, info.psize(o.humanflag, size))
