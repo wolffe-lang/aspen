@@ -32,7 +32,7 @@ fn mk(v: List[int], l: List[int], c: List[int]) -> Lines {
 /// `"|  "`, `"|--"`, `` "`--" `` (`src/charset.c:63`, LD_ASCII_BT): the
 /// fallback, VISCII and the windows sets.
 pub fn ascii() -> Lines {
-    mk([124, 32, 32], [124, 45, 45], [96, 45, 45])
+    mk([124, 32, 32], [124, 45, 45], [39, 45, 45])
 }
 
 /// The VT100 alternate-character-set hack (`-A`, `src/charset.c:73`).
