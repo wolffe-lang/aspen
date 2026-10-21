@@ -1,0 +1,93 @@
+#!/bin/sh
+# collation — the measurement ap01 put to a ruling (notes/ap01-the-second-light.md
+# §6): how many of C aspen's golden cases differ under en_US.UTF-8, whether
+# each differs by collation alone, and what the locale's collation data is.
+#
+#   tools/collation [--bin ASPEN] [--c-aspen DIR]
+#
+# Every case of C aspen's run.sh matrix (its CASES, its fixtures, made by
+# its own generators, as run.sh makes them) runs under LC_ALL=en_US.UTF-8
+# with tree 2.3.2 and aspen. A case that differs is run again with tree
+# under LC_CTYPE=en_US.UTF-8 and LC_COLLATE=C (the same names, the same
+# line set, byte order): when aspen then agrees, the case differs by
+# collation alone. Prints each differing case and its class, the counts,
+# and the sizes of the collation data glibc holds for the locale.
+# Run it in the oracle's container.
+set -u
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+bin=$ASPEN_ROOT/target/release/aspen
+csrc=$ASPEN_ROOT/.oracle/c-aspen
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --bin) bin=$2; shift 2 ;;
+    --c-aspen) csrc=$2; shift 2 ;;
+    *) echo "collation: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+case "$bin" in /*) ;; *) bin=$(pwd)/$bin ;; esac
+[ -x "$bin" ] || { echo "collation: no aspen at $bin" >&2; exit 2; }
+[ "$(LC_ALL=en_US.UTF-8 locale charmap 2>/dev/null)" = UTF-8 ] || { echo "collation: no en_US.UTF-8 locale" >&2; exit 2; }
+work=$(mktemp -d "${TMPDIR:-/tmp}/aspen-coll.XXXXXX") || exit 2
+trap 'chmod -R u+rwx "$work" 2>/dev/null; rm -rf "$work"' EXIT INT TERM
+g=$csrc/tests/golden
+for f in corpus weird lnk meta vert prune condense gign info ff deep roots; do
+    case $f in
+    prune) d=prn ;; condense) d=cnd ;; gign) d=gign ;; info) d=inf ;; deep) s=mkdeep.sh; d=deepchain ;; *) d=$f ;;
+    esac
+    s=mk$f.sh
+    sh "$g/$s" "$work/$d" >/dev/null 2>&1 || { echo "collation: $s failed" >&2; exit 2; }
+done
+: >"$work/hintro"; : >"$work/houtro"
+cases=$(sed -n "/^CASES='/,/'\$/p" "$g/run.sh" | sed "1s/^CASES='//; \$s/'\$//")
+run() { # LOCALE-ENV BIN CASE -> $work/o.out/.err/.rc
+    _env=$1 _b=$2 _c=$3
+    _x=$(printf '%s' "$_c" | sed "s#%C#$work/corpus#g; s#%W#$work/weird#g; s#%L#$work/lnk#g; s#%M#$work/meta#g; s#%V#$work/vert#g; s#%P#$work/prn#g; s#%G#$work/gign#g; s#%I#$work/inf#g; s#%h#$work/hintro#g; s#%o#$work/houtro#g; s#%F#$work/ff#g; s#%E#$work/deepchain#g; s#%R#$work/roots#g; s#%D#$work/cnd#g; s#%O#$work/ofile#g")
+    set -f
+    # shellcheck disable=SC2086
+    set -- $_x
+    set +f
+    # shellcheck disable=SC2086
+    env -u LC_ALL -u LANG $_env "$_b" "$@" >"$work/o.out" 2>"$work/o.err"
+    echo $? >"$work/o.rc"
+    sed 's/^tree: /PROG: /; s/^aspen: /PROG: /' "$work/o.err" >"$work/o.errn"
+    sed 's/%FFFFFF\([0-9A-Fa-f][0-9A-Fa-f]\)/%\1/g; s/,"contents":\[ *\]//g' "$work/o.out" >"$work/o.outn"
+}
+same() { cmp -s "$work/a.outn" "$work/o.outn" && cmp -s "$work/a.errn" "$work/o.errn" && cmp -s "$work/a.rc" "$work/o.rc"; }
+total=0
+differ=0
+order=0
+other=0
+nl='
+'
+oldifs=$IFS
+IFS=$nl
+for c in $cases; do
+    IFS=$oldifs
+    [ -n "$c" ] || continue
+    total=$((total + 1))
+    run "LC_ALL=en_US.UTF-8" "$bin" "$c"
+    for x in outn errn rc; do cp "$work/o.$x" "$work/a.$x"; done
+    run "LC_ALL=en_US.UTF-8" tree "$c"
+    if same; then IFS=$nl; continue; fi
+    differ=$((differ + 1))
+    run "LC_CTYPE=en_US.UTF-8 LC_COLLATE=C" tree "$c"
+    if same; then
+        order=$((order + 1))
+        echo "  collation alone: $c"
+    else
+        other=$((other + 1))
+        echo "  NOT collation alone: $c"
+        diff "$work/o.outn" "$work/a.outn" | sed -n '1,6p' | sed 's/^/    /'
+    fi
+    IFS=$nl
+done
+IFS=$oldifs
+echo "collation: $total cases under en_US.UTF-8: $differ differ from tree, $order of them by collation alone (tree with LC_COLLATE=C agrees), $other otherwise"
+# the locale's collation data: glibc compiles it from the locale sources
+# (ISO 14651's table, iso14651_t1_common) into LC_COLLATE
+src=/usr/share/i18n/locales/iso14651_t1_common
+[ -f "$src" ] && echo "collation: $src: $(wc -c <"$src" | tr -d ' ') bytes, $(wc -l <"$src" | tr -d ' ') lines, $(grep -c '^<U' "$src") collating elements"
+for f in /usr/lib/locale/en_US.utf8/LC_COLLATE /usr/lib/locale/locale-archive; do
+    [ -f "$f" ] && echo "collation: $f: $(wc -c <"$f" | tr -d ' ') bytes"
+done
+[ "$other" = 0 ]
