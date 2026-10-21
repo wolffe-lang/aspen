@@ -58,22 +58,22 @@ fn oct4(n: int) -> str {
 
 /// The metadata attributes (`src/render/xml.c:52`); the size is always
 /// the byte count here, `-h` or not.
-fn fill(mut x: Xml, o: opts.Opts, st: ent.Meta) {
+fn fill(mut x: Xml, o: opts.Opts, st: ent.Meta, ids: ent.Ids) {
     if o.inodeflag {
-        out.s(mut x.o, " inode=\"{st.ino}\"")
+        out.s(mut x.o, " inode=\"{ids.ino}\"")
     }
     if o.devflag {
-        out.s(mut x.o, " dev=\"{info.int32(st.dev)}\"")
+        out.s(mut x.o, " dev=\"{info.int32(ids.dev)}\"")
     }
     if o.permflag {
         out.s(mut x.o, " mode=\"{oct4(st.mode)}\" prot=\"{info.prot(st.kind, st.mode)}\"")
     }
     if o.userflag {
-        let u = info.user_name(mut x.cols, st.uid)
+        let u = info.user_name(mut x.cols, ids.uid)
         out.s(mut x.o, " user=\"{u}\"")
     }
     if o.groupflag {
-        let g = info.group_name(mut x.cols, st.gid)
+        let g = info.group_name(mut x.cols, ids.gid)
         out.s(mut x.o, " group=\"{g}\"")
     }
     if o.sizeflag {
@@ -107,15 +107,17 @@ fn head(mut x: Xml, o: opts.Opts, a: ent.Arena, e: ent.Ent) {
     out.s(mut x.o, " name=\"")
     if o.fullpath {
         html.encode(mut x.o, x.fp, 0, x.fp.len)
-    } else if e.cname >= 0 {
-        html.encode(mut x.o, a.cnames[e.cname], 1, a.cnames[e.cname].len)
+    } else if ent.cname_of(a, e) >= 0 {
+        let cn = ent.cname_of(a, e)
+        html.encode(mut x.o, a.cnames[cn], 1, a.cnames[cn].len)
     } else {
         html.encode(mut x.o, e.nm, 1, e.nm.len)
     }
     out.c(mut x.o, 34)
-    if e.info >= 0 {
+    let inf = ent.info_of(a, e)
+    if inf >= 0 {
         out.s(mut x.o, " info=\"")
-        let lines = a.infos[e.info]
+        let lines = copy a.infos[inf]
         var i = 0
         while i < lines.len {
             html.encode(mut x.o, lines[i], 0, lines[i].len)
@@ -132,7 +134,7 @@ fn head(mut x: Xml, o: opts.Opts, a: ent.Arena, e: ent.Ent) {
         out.c(mut x.o, 34)
     }
     if e.has_st {
-        fill(mut x, o, e.st)
+        fill(mut x, o, e.st, ent.ids(a, e))
     }
     out.c(mut x.o, 62)
 }
@@ -153,7 +155,7 @@ fn level(mut x: Xml, o: opts.Opts, a: ent.Arena, arr: List[int], depth: int) -> 
         let e = copy a.ents[k]
         let dl = ent.dir_like(e)
         if dl {
-            dirs += 1 + e.cond
+            dirs += 1 + ent.cond_of(a, e)
         } else {
             files += 1
         }
@@ -163,7 +165,8 @@ fn level(mut x: Xml, o: opts.Opts, a: ent.Arena, arr: List[int], depth: int) -> 
         let saved = x.fp.len
         if o.fullpath {
             (mut x.fp).push(47 as byte)
-            let nm = if e.cname >= 0 then copy a.cnames[e.cname] else copy e.nm
+            let cn = ent.cname_of(a, e)
+            let nm = if cn >= 0 then copy a.cnames[cn] else copy e.nm
             var i = 1
             while i < nm.len {
                 (mut x.fp).push(nm[i])
@@ -207,6 +210,7 @@ pub fn tree(
     o: opts.Opts,
     root: str,
     st0: ent.Meta,
+    ids0: ent.Ids,
     has: bool,
     opened: bool,
     limit: str,
@@ -215,9 +219,11 @@ pub fn tree(
     last: bool,
 ) -> (int, int) {
     let _ = last
-    var st = st0
-    st.ino = 0
-    st.dev = 0
+    let st = st0
+    // tree shows a root's inode and device as 0, its owners as they are
+    var z = ids0
+    z.ino = 0
+    z.dev = 0
     let rb = bs(root)
     indent(mut x, o, 0)
     if !opened {
@@ -228,7 +234,7 @@ pub fn tree(
         html.encode(mut x.o, rb, 0, rb.len)
         out.c(mut x.o, 34)
         if has {
-            fill(mut x, o, st)
+            fill(mut x, o, st, z)
         }
         out.s(mut x.o, "><error>error opening dir</error>")
         nl(mut x, o)
@@ -243,7 +249,7 @@ pub fn tree(
     html.encode(mut x.o, rb, 0, rb.len)
     out.c(mut x.o, 34)
     if has {
-        fill(mut x, o, st)
+        fill(mut x, o, st, z)
     }
     if limit.len > 0 {
         out.s(mut x.o, "><error>")

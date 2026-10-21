@@ -107,23 +107,23 @@ fn oct4(n: int) -> str {
 }
 
 /// The metadata keys (`src/render/json.c:78`).
-fn fill(mut j: Json, o: opts.Opts, st: ent.Meta) {
+fn fill(mut j: Json, o: opts.Opts, st: ent.Meta, ids: ent.Ids) {
     if o.inodeflag {
-        out.s(mut j.o, ",\"inode\":{st.ino}")
+        out.s(mut j.o, ",\"inode\":{ids.ino}")
     }
     if o.devflag {
-        out.s(mut j.o, ",\"dev\":{info.int32(st.dev)}")
+        out.s(mut j.o, ",\"dev\":{info.int32(ids.dev)}")
     }
     if o.permflag {
         let p = info.prot(st.kind, st.mode)
         out.s(mut j.o, ",\"mode\":\"{oct4(st.mode)}\",\"prot\":\"{p}\"")
     }
     if o.userflag {
-        let u = info.user_name(mut j.cols, st.uid)
+        let u = info.user_name(mut j.cols, ids.uid)
         out.s(mut j.o, ",\"user\":\"{u}\"")
     }
     if o.groupflag {
-        let g = info.group_name(mut j.cols, st.gid)
+        let g = info.group_name(mut j.cols, ids.gid)
         out.s(mut j.o, ",\"group\":\"{g}\"")
     }
     if o.sizeflag {
@@ -154,15 +154,17 @@ fn head(mut j: Json, o: opts.Opts, a: ent.Arena, e: ent.Ent) {
     out.s(mut j.o, "\",\"name\":\"")
     if o.fullpath {
         enc(mut j.o, j.fp, 0, j.fp.len)
-    } else if e.cname >= 0 {
-        enc(mut j.o, a.cnames[e.cname], 1, a.cnames[e.cname].len)
+    } else if ent.cname_of(a, e) >= 0 {
+        let cn = ent.cname_of(a, e)
+        enc(mut j.o, a.cnames[cn], 1, a.cnames[cn].len)
     } else {
         enc(mut j.o, e.nm, 1, e.nm.len)
     }
     out.c(mut j.o, 34)
-    if e.info >= 0 {
+    let inf = ent.info_of(a, e)
+    if inf >= 0 {
         out.s(mut j.o, ",\"info\":\"")
-        let lines = a.infos[e.info]
+        let lines = copy a.infos[inf]
         var i = 0
         while i < lines.len {
             enc(mut j.o, lines[i], 0, lines[i].len)
@@ -179,7 +181,7 @@ fn head(mut j: Json, o: opts.Opts, a: ent.Arena, e: ent.Ent) {
         out.c(mut j.o, 34)
     }
     if e.has_st {
-        fill(mut j, o, e.st)
+        fill(mut j, o, e.st, ent.ids(a, e))
     }
 }
 
@@ -203,14 +205,15 @@ fn level(mut j: Json, o: opts.Opts, a: ent.Arena, arr: List[int], depth: int) ->
         let last = i + 1 == n
         let dl = ent.dir_like(e)
         if dl {
-            dirs += 1 + e.cond
+            dirs += 1 + ent.cond_of(a, e)
         } else {
             files += 1
         }
         let saved = j.fp.len
         if o.fullpath {
             (mut j.fp).push(47 as byte)
-            let nm = if e.cname >= 0 then copy a.cnames[e.cname] else copy e.nm
+            let cn = ent.cname_of(a, e)
+            let nm = if cn >= 0 then copy a.cnames[cn] else copy e.nm
             var x = 1
             while x < nm.len {
                 (mut j.fp).push(nm[x])
@@ -268,6 +271,7 @@ pub fn tree(
     o: opts.Opts,
     root: str,
     st0: ent.Meta,
+    ids0: ent.Ids,
     has: bool,
     opened: bool,
     limit: str,
@@ -275,9 +279,11 @@ pub fn tree(
     top: List[int],
     last: bool,
 ) -> (int, int) {
-    var st = st0
-    st.ino = 0
-    st.dev = 0
+    let st = st0
+    // tree shows a root's inode and device as 0, its owners as they are
+    var z = ids0
+    z.ino = 0
+    z.dev = 0
     indent(mut j, o, 0)
     if !opened {
         let ft = if has then ent.type_name(st.kind) else "unknown"
@@ -287,7 +293,7 @@ pub fn tree(
         enc_str(mut j.o, root)
         out.c(mut j.o, 34)
         if has {
-            fill(mut j, o, st)
+            fill(mut j, o, st, z)
         }
         out.s(mut j.o, ",\"contents\":[{{\"error\": \"error opening dir\"}}")
         nl(mut j, o)
@@ -303,7 +309,7 @@ pub fn tree(
     enc_str(mut j.o, root)
     out.c(mut j.o, 34)
     if has {
-        fill(mut j, o, st)
+        fill(mut j, o, st, z)
     }
     if limit.len > 0 {
         out.s(mut j.o, ",\"contents\":[{{\"error\": \"")
