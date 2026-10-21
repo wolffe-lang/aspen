@@ -836,7 +836,7 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
         if o.duflag {
             let dusum = du_level(mut w, top)
             // tree sums every root's total; C aspen SETS it per root, so
-            // several roots report only the last one's (`src/traverse.c:1375`;
+            // several roots report only the last one's (`src/traverse.c:1378`;
             // docs/MAP.md)
             if has_st {
                 st.size = st.size + dusum
