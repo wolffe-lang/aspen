@@ -995,6 +995,36 @@ fn order(o: opts.Opts, ev: List[ent.Ent]) -> List[int] {
             i += 1
         }
     }
+    // a level the host already lists in order (tmpfs and btrfs list in
+    // creation order, which is often name order) is sorted in one pass:
+    // a natural merge sort's first look, n - 1 comparisons
+    if plain {
+        var sorted = true
+        i = 1
+        while i < n {
+            let kx = keys[i - 1]
+            let ky = keys[i]
+            if ky < kx || ky == kx && later(ev[i - 1].nm, ev[i].nm, 8) {
+                sorted = false
+                break
+            }
+            i += 1
+        }
+        if sorted {
+            if o.reverse {
+                var x = 0
+                var y = n - 1
+                while x < y {
+                    let t = a[x]
+                    a[x] = a[y]
+                    a[y] = t
+                    x += 1
+                    y -= 1
+                }
+            }
+            return a
+        }
+    }
     var width = 1
     while width < n {
         var lo = 0
