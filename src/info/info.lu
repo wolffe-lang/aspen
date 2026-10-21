@@ -1,49 +1,119 @@
-//! info — the bracketed metadata column, `[perms size date]` (C aspen
-//! `src/render/fileinfo.c`, "faithful to tree's fillinfo/prot/psize/
-//! do_date"). v1's columns are `-p`, `-s`/`-h` and `-D`; `--inodes`,
-//! `--device`, `-u`, `-g`, `--si` and `--timefmt` are ap01's.
+//! info — the bracketed metadata column, `[inode dev perms user group
+//! size date]` (C aspen `src/render/fileinfo.c`, "faithful to tree's
+//! fillinfo/prot/psize/do_date"), and the pieces `-J` and `-X` print
+//! one by one.
 
 use clock
+use host
 use ent
 use opts
 use out
+use std.os.users
+use tfmt
+
+/// What the columns need besides the options: the zone and the clock
+/// for the date, and the name caches for `-u`/`-g` (C aspen
+/// `src/idcache.c`: one lookup per id, the number when there is no
+/// name).
+pub struct Cols {
+    zone: clock.Zone,
+    now: int,
+    unames: Map[int, str],
+    gnames: Map[int, str],
+    passwd: str,
+    group: str,
+    loaded: bool,
+    macos: bool,
+}
+
+/// Columns over zone `z` at `now`.
+pub fn cols(take z: clock.Zone, now: int, macos: bool) -> Cols {
+    Cols {
+        zone: z,
+        now: now,
+        unames: Map[int, str](),
+        gnames: Map[int, str](),
+        passwd: "",
+        group: "",
+        loaded: false,
+        macos: macos,
+    }
+}
+
+fn load(mut c: Cols) {
+    if c.loaded {
+        return
+    }
+    c.loaded = true
+    c.passwd = fs_read_text("/etc/passwd") else ""
+    c.group = fs_read_text("/etc/group") else ""
+}
+
+/// The answer of a host tool's first line, "" when it fails (macOS's
+/// directory service holds the accounts `/etc/passwd` does not:
+/// wolf-std `std.os.users`' header).
+fn ask_id(uid: int) -> str {
+    host.first_line(["/usr/bin/id", "-un", "{uid}"])
+}
+
+/// `uid`'s name, or its number (`src/idcache.c:31`, `%d`).
+pub fn user_name(mut c: Cols, uid: int) -> str {
+    let hit = c.unames[uid] else ""
+    if hit.len > 0 {
+        return hit
+    }
+    load(mut c)
+    var nm = ""
+    let u = users.user_by_id(c.passwd, uid) else |_| {
+        users.User { name: "", uid: 0, gid: 0, comment: "", home: "", shell: "" }
+    }
+    nm = u.name
+    if nm.len == 0 && c.macos {
+        nm = ask_id(uid)
+    }
+    if nm.len == 0 {
+        nm = "{int32(uid)}"
+    }
+    c.unames[uid] = nm
+    nm
+}
+
+/// `gid`'s name, or its number.
+pub fn group_name(mut c: Cols, gid: int) -> str {
+    let hit = c.gnames[gid] else ""
+    if hit.len > 0 {
+        return hit
+    }
+    load(mut c)
+    let g = users.group_by_id(c.group, gid) else |_| {
+        users.Group { name: "", gid: 0, members: List[str]() }
+    }
+    var nm = g.name
+    if nm.len == 0 {
+        nm = "{int32(gid)}"
+    }
+    c.gnames[gid] = nm
+    nm
+}
+
+/// `(int)v`: the low 32 bits, read signed (tree prints ids and devices
+/// with `%d`).
+pub fn int32(v: int) -> int {
+    let lim: int = 4294967296
+    let half: int = 2147483648
+    var low = v % lim
+    if low < 0 {
+        low += lim
+    }
+    if low >= half then low - lim else low
+}
 
 /// `ls -l`'s type-and-permission string (`src/render/fileinfo.c:13`).
 /// `kind` is the entry's type, `mode` its 0o7777 bits.
 pub fn prot(kind: int, mode: int) -> str {
-    let t = match kind {
-        0 => "-",
-        1 => "d",
-        3 => "l",
-        6 => "c",
-        7 => "b",
-        5 => "s",
-        4 => "p",
-        _ => "?",
-    }
-    var p = List[str]()
-    let chars = ["r", "w", "x", "r", "w", "x", "r", "w", "x"]
-    var bit = 256
-    var i = 0
-    while i < 9 {
-        (mut p).push(if mode / bit % 2 == 1 then chars[i] else "-")
-        bit = bit / 2
-        i += 1
-    }
-    if mode / 2048 % 2 == 1 {
-        p[2] = if p[2] == "-" then "S" else "s"
-    }
-    if mode / 1024 % 2 == 1 {
-        p[5] = if p[5] == "-" then "S" else "s"
-    }
-    if mode / 512 % 2 == 1 {
-        p[8] = if p[8] == "-" then "T" else "t"
-    }
-    var out = t
-    for x in p {
-        out += x
-    }
-    out
+    var o = out.to_fd(-1)
+    put_prot(mut o, kind, mode)
+    str_from_utf8(o.buf) else ""
 }
 
 fn pad(s: str, w: int) -> str {
@@ -67,85 +137,54 @@ fn div_even(q: int, d: int) -> int {
     n
 }
 
+/// `%3.1f` of `(double)size / 1000.0` times ten, for `size` in
+/// 1000..9947 (`--si`'s one-decimal form). A quotient off a tie rounds
+/// as the exact one does (the double's error cannot cross a rounding
+/// point that far away); on a tie (`size % 100 == 50`) the double is not
+/// exact unless 125 divides `size`, and the side it falls on decides:
+/// the double is `size / 1000` rounded to 53 bits, computed here exactly.
+fn si_tenths(size: int) -> int {
+    if size % 100 != 50 {
+        return div_even(size, 100)
+    }
+    let n = size / 100
+    if size % 125 == 0 {
+        // exact: half to even
+        return if n % 2 == 1 then n + 1 else n
+    }
+    // x = size / 1000 in [1, 10): 52 - floor(log2 x) fraction bits
+    var p = 52
+    if size >= 8000 {
+        p = 49
+    } else if size >= 4000 {
+        p = 50
+    } else if size >= 2000 {
+        p = 51
+    }
+    var scaled: int = size
+    var k = 0
+    while k < p {
+        scaled = scaled * 2
+        k += 1
+    }
+    let r = scaled % 1000
+    // rounded up past the exact value: the tie goes up; down: it stays
+    let up = r * 2 > 1000 || r * 2 == 1000 && scaled / 1000 % 2 == 1
+    if up then n + 1 else n
+}
+
 /// tree's `psize` (`src/render/fileinfo.c:31`), with its leading space:
-/// `" %11lld"`, or with `-h` `" %4d"` below 1 KiB and `" %3.1f%c"` /
-/// `" %3.0f%c"` above. Each `-h` quotient is `size / 1024` with `size`
-/// below 2^20, exact in binary, so `%f`'s round-half-even is integer
-/// arithmetic here.
-pub fn psize(human: bool, size0: int) -> str {
-    if !human {
-        return " " + pad("{size0}", 11)
-    }
-    let units = ["B", "K", "M", "G", "T", "P", "E", "Z", "Y"]
-    var size = size0
-    var idx = if size < 1024 then 0 else 1
-    while size >= 1048576 {
-        idx += 1
-        size = size / 1024
-    }
-    if idx == 0 {
-        return " " + pad("{size}", 4)
-    }
-    if (size + 52) / 1024 >= 10 {
-        let n = div_even(size, 1024)
-        return " " + pad("{n}", 3) + units[idx]
-    }
-    let n = div_even(size * 10, 1024)
-    " " + pad("{n / 10}.{n % 10}", 3) + units[idx]
+/// `" %11lld"`, or with `-h`/`--si` `" %4d"` below one unit and
+/// `" %3.1f%c"` / `" %3.0f%c"` above. A `-h` quotient is `size / 1024`
+/// with `size` below 2^20, exact in binary, so `%f`'s round-half-even is
+/// integer arithmetic; `--si`'s is not exact (`si_tenths`).
+pub fn psize(human: bool, si: bool, size0: int) -> str {
+    var o = out.to_fd(-1)
+    put_psize(mut o, human, si, size0)
+    str_from_utf8(o.buf) else ""
 }
 
-fn two(n: int) -> str {
-    if n < 10 then "0{n}" else "{n}"
-}
-
-/// tree's date (`src/render/fileinfo.c:52`): `"%b %e  %Y"` for a time in
-/// the future or more than six months of 31 days ago, else `"%b %e %R"`,
-/// in the C locale's month names (aspen sets only LC_CTYPE and
-/// LC_COLLATE, `src/main.c:89`).
-pub fn date(z: clock.Zone, now: int, t: int) -> str {
-    let months = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-    ]
-    let (y, m, d, hh, mm) = clock.fields(z, t)
-    let day = if d < 10 then " {d}" else "{d}"
-    let six = 6 * 31 * 24 * 60 * 60
-    if t > now || t + six < now {
-        return "{months[m - 1]} {day}  {y}"
-    }
-    "{months[m - 1]} {day} {two(hh)}:{two(mm)}"
-}
-
-/// The column for `st` (`src/render/fileinfo.c:79`): `[...]`, or ""
-/// when no v1 column is on.
-pub fn fill(o: opts.Opts, z: clock.Zone, now: int, st: ent.Meta) -> str {
-    var t = ""
-    if o.permflag {
-        t += " " + prot(st.kind, st.mode)
-    }
-    if o.sizeflag {
-        t += psize(o.humanflag, st.size)
-    }
-    if o.dateflag {
-        t += " " + date(z, now, st.mtime)
-    }
-    if t.len == 0 {
-        return ""
-    }
-    "[" + t[1..] + "]"
-}
-
-/// The number of decimal digits of `n` (non-negative).
+/// The decimal digits of `n` (non-negative).
 fn digits(n: int) -> int {
     var d = 1
     var x = n
@@ -156,14 +195,26 @@ fn digits(n: int) -> int {
     d
 }
 
-/// `n` (non-negative) right-aligned in `width` columns, straight into
-/// the buffer.
-fn put_num(mut o: out.Out, n: int, width: int) {
+/// `n` right-aligned in `width` columns, straight into the buffer.
+pub fn put_num(mut o: out.Out, n0: int, width: int) {
+    var n = n0
+    var w = width
+    if n < 0 {
+        // a negative number: its sign counts in the width
+        var pd = width - digits(-n) - 1
+        while pd > 0 {
+            (mut o.buf).push(32 as byte)
+            pd -= 1
+        }
+        (mut o.buf).push(45 as byte)
+        n = -n
+        w = 0
+    }
     var d = digits(n)
-    var pad = width - d
-    while pad > 0 {
+    var p0 = w - d
+    while p0 > 0 {
         (mut o.buf).push(32 as byte)
-        pad -= 1
+        p0 -= 1
     }
     var p: int = 1
     while d > 1 {
@@ -177,7 +228,7 @@ fn put_num(mut o: out.Out, n: int, width: int) {
 }
 
 /// `prot`, straight into the buffer.
-fn put_prot(mut o: out.Out, kind: int, mode: int) {
+pub fn put_prot(mut o: out.Out, kind: int, mode: int) {
     let t = match kind {
         0 => 45,
         1 => 100,
@@ -212,27 +263,28 @@ fn put_prot(mut o: out.Out, kind: int, mode: int) {
 }
 
 /// `psize`, straight into the buffer (its leading space included).
-pub fn put_psize(mut o: out.Out, human: bool, size0: int) {
+pub fn put_psize(mut o: out.Out, human: bool, si: bool, size0: int) {
     (mut o.buf).push(32 as byte)
-    if !human {
+    if !human && !si {
         put_num(mut o, size0, 11)
         return
     }
-    let units = "BKMGTPEZY"
+    let units = if si then "dkMGTPEZY" else "BKMGTPEZY"
+    let usize = if si then 1000 else 1024
     var size = size0
-    var idx = if size < 1024 then 0 else 1
-    while size >= 1048576 {
+    var idx = if size < usize then 0 else 1
+    while size >= usize * usize {
         idx += 1
-        size = size / 1024
+        size = size / usize
     }
     if idx == 0 {
         put_num(mut o, size, 4)
         return
     }
-    if (size + 52) / 1024 >= 10 {
-        put_num(mut o, div_even(size, 1024), 3)
+    if (size + 52) / usize >= 10 {
+        put_num(mut o, div_even(size, usize), 3)
     } else {
-        let n = div_even(size * 10, 1024)
+        let n = if si then si_tenths(size) else div_even(size * 10, 1024)
         put_num(mut o, n / 10, 1)
         (mut o.buf).push(46 as byte)
         put_num(mut o, n % 10, 1)
@@ -240,46 +292,124 @@ pub fn put_psize(mut o: out.Out, human: bool, size0: int) {
     (mut o.buf).push(units.bytes()[idx])
 }
 
-/// The column of `fill`, straight into the buffer, with the two spaces
-/// that follow it (`src/render/unix.c:215`); nothing when no v1 column is
-/// on.
-pub fn put_fill(mut o: out.Out, opt: opts.Opts, z: clock.Zone, now: int, st: ent.Meta) {
-    if !opt.permflag && !opt.sizeflag && !opt.dateflag {
-        return
-    }
-    (mut o.buf).push(91 as byte)
-    var first = true
-    if opt.permflag {
-        put_prot(mut o, st.kind, st.mode)
-        first = false
-    }
-    if opt.sizeflag {
-        if first {
-            // the column's leading space is the bracket
-            let at = o.buf.len
-            put_psize(mut o, opt.humanflag, st.size)
-            drop_at(mut o, at)
-        } else {
-            put_psize(mut o, opt.humanflag, st.size)
-        }
-        first = false
-    }
-    if opt.dateflag {
-        if !first {
-            (mut o.buf).push(32 as byte)
-        }
-        out.s(mut o, date(z, now, st.mtime))
-    }
-    out.s(mut o, "]  ")
+fn two(n: int) -> str {
+    if n < 10 then "0{n}" else "{n}"
 }
 
-/// Remove the byte at `at` (the leading space a column put after `[`).
-fn drop_at(mut o: out.Out, at: int) {
-    let n = o.buf.len
-    var i = at
-    while i + 1 < n {
-        o.buf[i] = o.buf[i + 1]
+/// tree's date (`src/render/fileinfo.c:52`): `--timefmt`'s format, or
+/// `"%b %e  %Y"` for a time in the future or more than six months of 31
+/// days ago, else `"%b %e %R"`, in the C locale's month names (aspen
+/// sets only LC_CTYPE and LC_COLLATE, `src/main.c:89`).
+pub fn date_bytes(o: opts.Opts, c: Cols, t: int) -> List[byte] {
+    if o.has_timefmt {
+        return tfmt.format(o.timefmt, clock.tm_of(c.zone, t))
+    }
+    var r = List[byte]()
+    for x in date(c.zone, c.now, t).bytes() {
+        (mut r).push(x)
+    }
+    r
+}
+
+/// The default date form.
+pub fn date(z: clock.Zone, now: int, t: int) -> str {
+    let months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+    ]
+    let (y, m, d, hh, mm) = clock.fields(z, t)
+    let day = if d < 10 then " {d}" else "{d}"
+    let six = 6 * 31 * 24 * 60 * 60
+    if t > now || t + six < now {
+        return "{months[m - 1]} {day}  {y}"
+    }
+    "{months[m - 1]} {day} {two(hh)}:{two(mm)}"
+}
+
+/// Whether any bracket column is on (`src/render/fileinfo.c:97`).
+pub fn any(o: opts.Opts) -> bool {
+    o.inodeflag || o.devflag || o.permflag || o.userflag || o.groupflag || o.sizeflag || o.dateflag
+}
+
+/// ` %-8.32s`: at most 32 bytes, padded on the right to 8.
+fn put_name(mut o: out.Out, s: str) {
+    (mut o.buf).push(32 as byte)
+    var n = s.len
+    if n > 32 {
+        n = 32
+    }
+    var i = 0
+    while i < n {
+        (mut o.buf).push(s.bytes()[i])
         i += 1
     }
-    let _ = (mut o.buf).pop() else 0 as byte
+    while n < 8 {
+        (mut o.buf).push(32 as byte)
+        n += 1
+    }
+}
+
+/// The column for `st` (`src/render/fileinfo.c:79`), `[...]`, straight
+/// into the buffer; nothing when no column is on. `tail` adds the two
+/// spaces the text renderer puts after it (`src/render/unix.c:215`).
+pub fn put_fill(mut o: out.Out, opt: opts.Opts, mut c: Cols, st: ent.Meta, tail: bool) {
+    if !any(opt) {
+        return
+    }
+    let at = o.buf.len
+    if opt.inodeflag {
+        (mut o.buf).push(32 as byte)
+        put_num(mut o, st.ino, 7)
+    }
+    if opt.devflag {
+        (mut o.buf).push(32 as byte)
+        put_num(mut o, int32(st.dev), 3)
+    }
+    if opt.permflag {
+        (mut o.buf).push(32 as byte)
+        put_prot(mut o, st.kind, st.mode)
+    }
+    if opt.userflag {
+        put_name(mut o, user_name(mut c, st.uid))
+    }
+    if opt.groupflag {
+        put_name(mut o, group_name(mut c, st.gid))
+    }
+    if opt.sizeflag {
+        put_psize(mut o, opt.humanflag, opt.siflag, st.size)
+    }
+    if opt.dateflag {
+        (mut o.buf).push(32 as byte)
+        let t = if opt.ctimeflag then st.ctime else st.mtime
+        for x in date_bytes(opt, c, t) {
+            (mut o.buf).push(x)
+        }
+    }
+    // the column's leading space is the bracket (`buf[0] == ' '`)
+    if o.buf.len > at && o.buf[at] as int == 32 {
+        o.buf[at] = 91 as byte
+        (mut o.buf).push(93 as byte)
+    }
+    if tail && o.buf.len > at {
+        (mut o.buf).push(32 as byte)
+        (mut o.buf).push(32 as byte)
+    }
+}
+
+/// The column as bytes, `[...]` or nothing (HTML prints it with its
+/// spaces as `&nbsp;`).
+pub fn fill(opt: opts.Opts, mut c: Cols, st: ent.Meta) -> List[byte] {
+    var o = out.to_fd(-1)
+    put_fill(mut o, opt, mut c, st, false)
+    o.buf
 }

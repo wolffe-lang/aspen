@@ -1,25 +1,44 @@
 //! The metadata column's rows: -h's rounding at its boundaries (half to
 //! even on the exact quotient), -s's width, the permission strings, the
-//! date's two forms.
+//! date's two forms, --si's rounding of an inexact quotient, the
+//! low 32 bits tree prints an id with.
 
 use clock
 use info
 
 fn main() {
-    assert(info.psize(false, 0) == "           0", "-s pads to 11")
-    assert(info.psize(false, 10485760) == "    10485760", "-s 10 MiB")
-    assert(info.psize(true, 0) == "    0", "-h zero")
-    assert(info.psize(true, 1023) == " 1023", "-h below 1K is bytes")
-    assert(info.psize(true, 1024) == " 1.0K", "-h 1K")
-    assert(info.psize(true, 1280) == " 1.2K", "-h 1.25K ties to even")
-    assert(info.psize(true, 1536) == " 1.5K", "-h 1.5K")
-    assert(info.psize(true, 1331) == " 1.3K", "-h 1.2998 rounds up")
-    assert(info.psize(true, 10187) == " 9.9K", "-h just under the switch")
-    assert(info.psize(true, 10188) == "  10K", "-h at the switch: %3.0f")
-    assert(info.psize(true, 1048575) == " 1024K", "-h the last K: four digits")
-    assert(info.psize(true, 1048576) == " 1.0M", "-h 1M")
-    assert(info.psize(true, 10485760) == "  10M", "-h 10M")
-    assert(info.psize(true, 1073741824) == " 1.0G", "-h 1G")
+    assert(info.psize(false, false, 0) == "           0", "-s pads to 11")
+    assert(info.psize(false, false, 10485760) == "    10485760", "-s 10 MiB")
+    assert(info.psize(true, false, 0) == "    0", "-h zero")
+    assert(info.psize(true, false, 1023) == " 1023", "-h below 1K is bytes")
+    assert(info.psize(true, false, 1024) == " 1.0K", "-h 1K")
+    assert(info.psize(true, false, 1280) == " 1.2K", "-h 1.25K ties to even")
+    assert(info.psize(true, false, 1536) == " 1.5K", "-h 1.5K")
+    assert(info.psize(true, false, 1331) == " 1.3K", "-h 1.2998 rounds up")
+    assert(info.psize(true, false, 10187) == " 9.9K", "-h just under the switch")
+    assert(info.psize(true, false, 10188) == "  10K", "-h at the switch: %3.0f")
+    assert(info.psize(true, false, 1048575) == " 1024K", "-h the last K: four digits")
+    assert(info.psize(true, false, 1048576) == " 1.0M", "-h 1M")
+    assert(info.psize(true, false, 10485760) == "  10M", "-h 10M")
+    assert(info.psize(true, false, 1073741824) == " 1.0G", "-h 1G")
+    // --si: the double nearest size / 1000 decides a tie (Python's %.1f, as glibc's)
+    assert(info.psize(false, true, 999) == "  999", "--si 999")
+    assert(info.psize(false, true, 1000) == " 1.0k", "--si 1000")
+    assert(info.psize(false, true, 1049) == " 1.0k", "--si 1049")
+    assert(info.psize(false, true, 1050) == " 1.1k", "--si 1050")
+    assert(info.psize(false, true, 1150) == " 1.1k", "--si 1150")
+    assert(info.psize(false, true, 1250) == " 1.2k", "--si 1250")
+    assert(info.psize(false, true, 1350) == " 1.4k", "--si 1350")
+    assert(info.psize(false, true, 2450) == " 2.5k", "--si 2450")
+    assert(info.psize(false, true, 2550) == " 2.5k", "--si 2550")
+    assert(info.psize(false, true, 4050) == " 4.0k", "--si 4050")
+    assert(info.psize(false, true, 8150) == " 8.2k", "--si 8150")
+    assert(info.psize(false, true, 9947) == " 9.9k", "--si 9947")
+    assert(info.psize(false, true, 9948) == "  10k", "--si 9948")
+    assert(info.psize(false, true, 10500) == "  10k", "--si 10500")
+    assert(info.psize(false, true, 999999) == " 1000k", "--si 999999")
+    assert(info.psize(false, true, 1000000) == " 1.0M", "--si 1000000")
+    assert(info.psize(false, true, 1050000) == " 1.1M", "--si 1050000")
     assert(info.prot(0, 420) == "-rw-r--r--", "0644 file")
     assert(info.prot(1, 493) == "drwxr-xr-x", "0755 dir")
     assert(info.prot(0, 2541) == "-rwsr-xr-x", "4755 file")
@@ -40,4 +59,6 @@ fn main() {
     // six months of 31 days ago, and a second more
     assert(info.date(z, now, now - 16070400) == "Apr 11 17:46", "at the boundary")
     assert(info.date(z, now, now - 16070401) == "Apr 11  2026", "past it")
+    assert(info.int32(4294967294) == -2, "nobody's id is -2 under %d")
+    assert(info.int32(1000) == 1000, "an ordinary id")
 }
