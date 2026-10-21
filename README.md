@@ -35,27 +35,36 @@ user): `tools/golden` runs C aspen's golden suite as it is against this
 binary; `tools/oracle` runs tree and aspen over generated fixtures
 (`tests/fixtures/mkfixtures`) for every invocation in
 `tests/oracle/sets.tsv`; `tools/fuzz` runs C aspen's fuzzer's random trees
-over v1's flags; each prints `N agree / M differ / K not-yet`.
+over its whole flag pool; each prints `N agree / M differ / K not-yet`.
+`tools/collation` measures what the dictionary locale's order changes.
 
 ## Status
 
-Nothing is released. v1 (ap00) is byte-identical to tree 2.3.2 and to C
-aspen, in the C and C.UTF-8 locales, for: the default listing, `-a`, `-d`,
-`-L N`, `-f`, `-F`, `-p`, `-s`, `-h`, `-D`, `--dirsfirst`, `-r`, `-t`,
-`-I`/`-P` (tree's wild cards, `--ignore-case`, `--matchdirs`),
-`--noreport`, `-A` (ANSI lines), the ASCII and UTF-8 line sets, `-o FILE`,
-`-J`, `--prune`, `--du`, the report line, `[error opening dir]`, missing
-and several roots. Every other tree option is refused by name with status
-2 (`docs/MAP.md` §3); they are ap01's. What v1 does not do yet, named:
+Nothing is released. aspen is byte-identical to tree 2.3.2 and to C
+aspen, in the C and C.UTF-8 locales, across tree's whole option surface
+but two (ap00's v1, then ap01): the listing and its filters (`-a -d -l -f
+-x -L -R -P -I --gitignore --gitfile --ignore-case --matchdirs --prune
+--info --infofile --filelimit --condense --fromfile --fromtabfile
+--fflinks --noreport --charset -o`), the columns (`-q -N -Q -p -u -g -s
+-h --si --du -D --timefmt -F --inodes --device --metafirst`), the sorts
+(`-v -t -c -U -r --dirsfirst --filesfirst --sort`), the graphics (`-i -A
+-S -n -C --compress`, `LS_COLORS`/`TREE_COLORS`/`CLICOLOR`/`NO_COLOR`), and
+the formats (`-X -J -H -T --nolinks --hintro --houtro --hyperlink --scheme
+--authority`), with `--opt-toggle`, `--help`, C aspen's deviations and
+its own `--threads`. What it does not do, named:
 
-- names sort by byte in every locale (tree uses the locale's collation, so
-  a dictionary locale such as en_US.UTF-8 can order dot names differently);
-- no colour, ever (tree colours a terminal when `LS_COLORS` is set);
+- `--acl` and `--selinux` (tree's, on linux) are refused by name, status
+  2: they read a file's extended attributes, which wolf has no call for;
+  so is C aspen's own `--asp-diff` (a ruling asked);
+- names sort by byte in every locale: tree uses the locale's collation,
+  so a dictionary locale such as glibc's en_US.UTF-8 orders some names
+  differently (29 of C aspen's 286 golden cases, every one by order
+  alone: `tools/collation`); macOS's en_US.UTF-8 collates by byte;
 - a name that is not UTF-8 cannot be opened or stat'ed (wolf-lang#687).
 
 ## Build
 
-The toolchain is fetched by digest (`wolf-toolchain.toml`): wolf 0.2.33,
+The toolchain is fetched by digest (`wolf-toolchain.toml`): wolf 0.2.34,
 lupin 0.1.55, wolf-std `e036bec`.
 
 ```sh
