@@ -20,6 +20,10 @@ pub struct Text {
     utf8: bool,
     ln: lines.Lines,
     last: List[bool],
+    pre: List[byte],
+    pre_at: List[int],
+    corner: List[byte],
+    vleft: List[byte],
     zone: clock.Zone,
     now: int,
     debug: bool,
@@ -27,11 +31,17 @@ pub struct Text {
 
 /// A renderer writing to descriptor `fd`.
 pub fn new(fd: int, utf8: bool, take ln: lines.Lines, take zone: clock.Zone, now: int) -> Text {
+    let corner = copy ln.corner
+    let vleft = copy ln.vleft
     Text {
         o: out.to_fd(fd),
         utf8: utf8,
         ln: ln,
         last: List[bool](),
+        pre: List[byte](),
+        pre_at: List[int](),
+        corner: corner,
+        vleft: vleft,
         zone: zone,
         now: now,
         debug: false,
@@ -80,13 +90,8 @@ fn root_ftype(o: opts.Opts, st: ent.Meta) -> int {
 }
 
 fn meta(mut t: Text, o: opts.Opts, st: ent.Meta, has: bool) {
-    if !has {
-        return
-    }
-    let col = info.fill(o, t.zone, t.now, st)
-    if col.len > 0 {
-        out.s(mut t.o, col)
-        out.s(mut t.o, "  ")
+    if has {
+        info.put_fill(mut t.o, o, t.zone, t.now, st)
     }
 }
 
@@ -118,32 +123,84 @@ pub fn root(mut t: Text, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st
     out.maybe(mut t.o)
 }
 
-fn indent(mut t: Text, depth: int, is_last: bool) {
-    var i = 1
-    while i < depth {
-        if t.last[i] {
-            out.s(mut t.o, "   ")
-        } else {
-            out.bytes(mut t.o, t.ln.vert, 0, t.ln.vert.len)
+/// The indentation every entry of a directory at `depth` shares: one
+/// glyph and a space per ancestor (`src/render/unix.c:144`'s loop), built
+/// once per directory, since only the entry's own connector differs
+/// between siblings. The walk calls this before a directory's entries.
+/// Depth d's prefix is depth d-1's plus one glyph, so one buffer holds
+/// the deepest open level's and `pre_at[d]` is where depth d's ends.
+pub fn begin_level(mut t: Text, depth: int) {
+    while t.pre_at.len <= depth {
+        (mut t.pre_at).push(0)
+    }
+    if depth <= 1 {
+        while t.pre.len > 0 {
+            let _ = (mut t.pre).pop() else 0 as byte
         }
-        out.c(mut t.o, 32)
+        t.pre_at[depth] = 0
+        return
+    }
+    let base = t.pre_at[depth - 1]
+    while t.pre.len > base {
+        let _ = (mut t.pre).pop() else 0 as byte
+    }
+    if depth - 1 < t.last.len && t.last[depth - 1] {
+        (mut t.pre).push(32 as byte)
+        (mut t.pre).push(32 as byte)
+        (mut t.pre).push(32 as byte)
+    } else {
+        var k = 0
+        let n = t.ln.vert.len
+        while k < n {
+            (mut t.pre).push(t.ln.vert[k])
+            k += 1
+        }
+    }
+    (mut t.pre).push(32 as byte)
+    t.pre_at[depth] = t.pre.len
+}
+
+fn indent(mut t: Text, depth: int, is_last: bool) {
+    var i = 0
+    let end = t.pre_at[depth]
+    while i < end {
+        (mut t.o.buf).push(t.pre[i])
         i += 1
     }
     if is_last {
-        out.bytes(mut t.o, t.ln.corner, 0, t.ln.corner.len)
+        let n = t.corner.len
+        var k = 0
+        while k < n {
+            (mut t.o.buf).push(t.corner[k])
+            k += 1
+        }
     } else {
-        out.bytes(mut t.o, t.ln.vleft, 0, t.ln.vleft.len)
+        let n = t.vleft.len
+        var k = 0
+        while k < n {
+            (mut t.o.buf).push(t.vleft[k])
+            k += 1
+        }
     }
-    out.c(mut t.o, 32)
+    (mut t.o.buf).push(32 as byte)
     while t.last.len <= depth {
         (mut t.last).push(false)
     }
     t.last[depth] = is_last
 }
 
-/// One entry, without its newline (`src/render/unix.c:268`). `path` is
-/// the entry's full path, printed in place of the name under `-f`.
-pub fn entry(mut t: Text, o: opts.Opts, e: ent.Ent, path: str, depth: int, is_last: bool) {
+/// One entry, without its newline (`src/render/unix.c:268`). `lnk` is a
+/// symlink's target (any list when `e.lnk` is -1); `path` is the entry's
+/// full path, printed in place of the name under `-f`.
+pub fn entry(
+    mut t: Text,
+    o: opts.Opts,
+    e: ent.Ent,
+    lnk: List[byte],
+    path: str,
+    depth: int,
+    is_last: bool,
+) {
     if t.debug {
         debug_entry(mut t, e, path)
         return
@@ -155,15 +212,15 @@ pub fn entry(mut t: Text, o: opts.Opts, e: ent.Ent, path: str, depth: int, is_la
     } else {
         name.put(mut t.o, e.nm, 1, e.nm.len, t.utf8)
     }
-    if o.classify && !e.has_lnk {
+    if o.classify && e.lnk < 0 {
         let s = ftype(o, e.kind, e.flags & ent.f_exec() != 0)
         if s != 0 {
             out.c(mut t.o, s)
         }
     }
-    if e.has_lnk {
+    if e.lnk >= 0 {
         out.s(mut t.o, " -> ")
-        name.put(mut t.o, e.lnk, 0, e.lnk.len, t.utf8)
+        name.put(mut t.o, lnk, 0, lnk.len, t.utf8)
         if o.classify {
             let s = ftype(o, e.ltype, e.flags & ent.f_lexec() != 0)
             if s != 0 {
