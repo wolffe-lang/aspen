@@ -2,10 +2,10 @@
 #
 # classify ARGS: "v1" when every option word in ARGS is one aspen
 # implements, else "v2 FLAG" naming the first that is not. Since ap01 that
-# is every option of tree 2.3.2 and C aspen but three, which aspen refuses
+# is every option of tree 2.3.2 and C aspen but two, which aspen refuses
 # by name with status 2: tree's --acl and --selinux (they read extended
-# attributes, which wolf has no call for) and C aspen's own --asp-diff
-# (notes/ap01-the-second-light.md, the rulings asked). Words not starting
+# attributes, which wolf has no call for; notes/ap01-the-second-light.md,
+# the rulings asked). Words not starting
 # with "-" are roots (or an option's argument); "--" ends the options.
 # The short flags that take an argument (glued or the next word) are P I
 # o L H T; the long ones that take one take it as --opt=V or the next word.
@@ -19,7 +19,7 @@ classify() {
         shift
         case "$_w" in
         --) echo v1; return ;;
-        --acl | --selinux | --asp-diff) echo "v2 $_w"; return ;;
+        --acl | --selinux) echo "v2 $_w"; return ;;
         --compress | --charset | --filelimit | --threads | --timefmt | --sort | --gitfile | --infofile | --hintro | --houtro | --scheme | --authority)
             [ $# -gt 0 ] && shift ;;
         --*) ;;

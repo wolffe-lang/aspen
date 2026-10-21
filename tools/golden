@@ -34,7 +34,7 @@
 #
 # Each script's reports are classed: a report about an implemented flag
 # set in the C or C.UTF-8 locale must not exist (a STOP); one about a
-# refused flag (--acl, --selinux, --asp-diff: lib-classify.sh), or any
+# refused flag (--acl, --selinux: lib-classify.sh), or any
 # under en_US.UTF-8 (whose strcoll order aspen does not carry;
 # src/locale), is "not yet"; a script's own skip is printed and counted.
 # For run.sh, every case is counted: N agree / M differ / K not-yet.
