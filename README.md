@@ -30,13 +30,42 @@ dependency but wolf-std and is built static for
   CI's container, and from Homebrew on macOS. tree's source is never read
   directly.
 
-`tools/oracle` runs both binaries over the generated fixtures in a
-container and prints `N agree / M differ / K not-yet`.
+In a container of its own (`ci/oracle.Containerfile`, as a non-root
+user): `tools/golden` runs C aspen's golden suite as it is against this
+binary; `tools/oracle` runs tree and aspen over generated fixtures
+(`tests/fixtures/mkfixtures`) for every invocation in
+`tests/oracle/sets.tsv`; `tools/fuzz` runs C aspen's fuzzer's random trees
+over v1's flags; each prints `N agree / M differ / K not-yet`.
 
 ## Status
 
-Nothing is released. ap00 lands the repository and the first version
-(see `CHANGELOG.md`).
+Nothing is released. v1 (ap00) is byte-identical to tree 2.3.2 and to C
+aspen, in the C and C.UTF-8 locales, for: the default listing, `-a`, `-d`,
+`-L N`, `-f`, `-F`, `-p`, `-s`, `-h`, `-D`, `--dirsfirst`, `-r`, `-t`,
+`-I`/`-P` (tree's wild cards, `--ignore-case`, `--matchdirs`),
+`--noreport`, `-A` (ANSI lines), the ASCII and UTF-8 line sets, `-o FILE`,
+`-J`, `--prune`, `--du`, the report line, `[error opening dir]`, missing
+and several roots. Every other tree option is refused by name with status
+2 (`docs/MAP.md` §3); they are ap01's. What v1 does not do yet, named:
+
+- names sort by byte in every locale (tree uses the locale's collation, so
+  a dictionary locale such as en_US.UTF-8 can order dot names differently);
+- no colour, ever (tree colours a terminal when `LS_COLORS` is set);
+- a name that is not UTF-8 cannot be opened or stat'ed (wolf-lang#687).
+
+## Build
+
+The toolchain is fetched by digest (`wolf-toolchain.toml`): wolf 0.2.33,
+lupin 0.1.55, wolf-std `e036bec`.
+
+```sh
+tools/fetch-toolchain
+tools/build --release              # target/release/aspen
+tools/mkaspen target/mkaspen       # static x86-64 Linux, for PAX
+tools/check-test                   # the unit tests on three lanes
+tools/fetch-c-aspen                # C aspen at aspen.pin, for the oracles
+tools/in-container tools/golden    # and the other harnesses, in podman or docker
+```
 
 ## License
 
