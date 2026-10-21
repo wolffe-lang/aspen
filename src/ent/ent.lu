@@ -1,0 +1,152 @@
+//! ent — one directory entry (C aspen `src/entry.h`), and the type codes.
+//!
+//! The type codes are wolf-std's (`std.fs.Info.kind`, the order
+//! `fs_read_dir_entries` reports them in): 0 regular file, 1 directory,
+//! 2 anything the host does not name (C aspen's ASP_UNKNOWN; resolved by
+//! an `lstat`), 3 symbolic link, 4 fifo, 5 socket, 6 character device,
+//! 7 block device.
+//!
+//! The name is kept as the bytes the host gave (`nm`, the row
+//! `fs_read_dir_entries` returned: `nm[0]` is the type byte and the name
+//! is `nm[1..]`), so a listing never copies or decodes a name it only
+//! prints. A path is built (`str`) only for an entry aspen opens or
+//! stats; a name that is not UTF-8 cannot be one (wolf paths are `str`,
+//! wolf-lang#687), which no golden or fuzzer name is.
+
+/// A regular file.
+pub fn reg() -> int {
+    0
+}
+
+/// A directory.
+pub fn dir() -> int {
+    1
+}
+
+/// A type the host did not name (resolved by an `lstat`).
+pub fn unknown() -> int {
+    2
+}
+
+/// A symbolic link.
+pub fn lnk() -> int {
+    3
+}
+
+/// A named pipe.
+pub fn fifo() -> int {
+    4
+}
+
+/// A socket.
+pub fn sock() -> int {
+    5
+}
+
+/// A character device.
+pub fn chr() -> int {
+    6
+}
+
+/// A block device.
+pub fn blk() -> int {
+    7
+}
+
+// Flags (`src/entry.h:17`).
+/// A dangling symlink (`ENT_ORPHAN`).
+pub fn f_orphan() -> int {
+    2
+}
+
+/// A regular file with an execute bit (`-F`'s `*`, `ENT_EXEC`).
+pub fn f_exec() -> int {
+    4
+}
+
+/// A symlink whose target is an executable file (`ENT_LEXEC`).
+pub fn f_lexec() -> int {
+    8
+}
+
+/// A directory whose name `--matchdirs` matched: kept by `--prune`.
+pub fn f_matched() -> int {
+    16
+}
+
+/// The metadata C aspen keeps (`src/sys/xstat.h:24`): what v1's columns
+/// and sorts read. `mode` is the permission bits (0o7777), the type is
+/// the entry's kind.
+pub struct Meta {
+    kind: int,
+    mode: int,
+    size: int,
+    mtime: int,
+    ctime: int,
+}
+
+/// One entry: its name's bytes (`nm`, the host's row), its type, a
+/// symlink's target type and target, the flags, the metadata when a flag
+/// stat'ed it, and in the built tree its children (indices into the
+/// walk's arena) or the error that stopped its descent.
+pub struct Ent {
+    nm: List[byte],
+    kind: int,
+    ltype: int,
+    flags: int,
+    lnk: List[byte],
+    has_lnk: bool,
+    st: Meta,
+    has_st: bool,
+    child: List[int],
+    has_child: bool,
+    err: str,
+}
+
+/// Metadata nobody read (`has_st` false beside it).
+pub fn no_meta() -> Meta {
+    Meta { kind: 2, mode: 0, size: 0, mtime: 0, ctime: 0 }
+}
+
+/// A `Meta` from the twenty words `fs_lstat`/`fs_stat` answer
+/// (`std.fs.Info`'s table: 0 kind, 1 size, 4 mode, 14 mtime s, 16 ctime s).
+pub fn meta_of(w: List[int]) -> Meta {
+    Meta { kind: w[0], mode: w[4], size: w[1], mtime: w[14], ctime: w[16] }
+}
+
+/// A fresh entry of type `kind` named by the row `nm`.
+pub fn new_ent(take nm: List[byte], kind: int) -> Ent {
+    Ent {
+        nm: nm,
+        kind: kind,
+        ltype: -1,
+        flags: 0,
+        lnk: List[byte](),
+        has_lnk: false,
+        st: no_meta(),
+        has_st: false,
+        child: List[int](),
+        has_child: false,
+        err: "",
+    }
+}
+
+/// A symlink to a directory counts and sorts as a directory (tree, all
+/// modes; `src/traverse.c:732`).
+pub fn dir_like(e: Ent) -> bool {
+    e.kind == 1 || e.kind == 3 && e.ltype == 1
+}
+
+/// tree's long type name (`src/entry.c:5`), for `-J`.
+pub fn type_name(kind: int) -> str {
+    match kind {
+        0 => "file",
+        1 => "directory",
+        3 => "link",
+        4 => "fifo",
+        5 => "socket",
+        6 => "char",
+        7 => "block",
+        _ => "unknown",
+    }
+}
