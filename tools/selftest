@@ -1,0 +1,63 @@
+#!/bin/sh
+# selftest — each harness sees a difference. Against an aspen that answers
+# wrong in one way (a wrapper script per way, each running the real one
+# and spoiling its answer), each harness must exit 1; against the real
+# aspen (the steps before this one) each exits 0. The standing proof, in
+# every run, that a green is not a harness that cannot go red; the planted
+# breaks of real code are ap00's plant runs (notes/ap00-the-first-light.md).
+#
+#   tools/selftest ASPEN
+#
+# Run it in the oracle's container, like the harnesses it checks.
+set -u
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+bin=${1:?usage: selftest ASPEN}
+case "$bin" in /*) ;; *) bin=$(pwd)/$bin ;; esac
+cd "$ASPEN_ROOT"
+w=$(mktemp -d "${TMPDIR:-/tmp}/aspen-selftest.XXXXXX") || exit 2
+trap 'rm -rf "$w"' EXIT INT TERM
+
+# wrap NAME FILTER: an `aspen` whose stdout goes through FILTER
+wrap() {
+    mkdir -p "$w/$1"
+    {
+        echo '#!/bin/sh'
+        echo "\"$bin\" \"\$@\" | $2"
+        echo 'exit 0'
+    } >"$w/$1/aspen"
+    chmod +x "$w/$1/aspen"
+}
+# a corner drawn wrong (the line set), every status 0
+wrap glyph "sed 's/\`-- /+-- /; s/└── /\\\\-- /'"
+# one report line off by one directory
+wrap count "sed 's/^\\([0-9]*\\) director/9\\1 director/'"
+# slow: 50 ms late, every run
+mkdir -p "$w/slow"
+printf '#!/bin/sh\nsleep 0.05\nexec "%s" "$@"\n' "$bin" >"$w/slow/aspen"
+chmod +x "$w/slow/aspen"
+
+fail=0
+expect_red() { # name, command...
+    name=$1
+    shift
+    "$@" >"$w/$name.log" 2>&1
+    st=$?
+    if [ "$st" = 1 ]; then
+        echo "selftest: $name went red on its planted difference (status 1): ok"
+    else
+        echo "selftest: $name answered $st on a planted difference; it must be 1" >&2
+        tail -5 "$w/$name.log" >&2
+        fail=1
+    fi
+}
+expect_red oracle-glyph tools/oracle --bin "$w/glyph/aspen" --only -a
+expect_red oracle-count tools/oracle --bin "$w/count/aspen" --only -d
+expect_red golden-glyph tools/golden --bin "$w/glyph/aspen"
+expect_red fuzz-glyph tools/fuzz --bin "$w/glyph/aspen" --n 5
+if [ -x "$ASPEN_ROOT/.oracle/c-aspen/aspen" ]; then
+    expect_red perf-slow tools/perf --bin "$w/slow/aspen" --runs 3
+else
+    echo "selftest: perf not planted (no .oracle/c-aspen/aspen: build C aspen first)" >&2
+    fail=1
+fi
+exit $fail
