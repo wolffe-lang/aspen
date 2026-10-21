@@ -2,7 +2,16 @@
 #
 # Two hosts: linux x86-64 and macOS arm64, from the release archives
 # pinned BY DIGEST in wolf-toolchain.toml (tools/fetch-toolchain refuses
-# a mismatch; nothing is built from source but aspen itself).
+# a mismatch; nothing is built from source but aspen and, for the oracle
+# of record and the perf row, C aspen at aspen.pin).
+#
+# THE ORACLES. Linux runs every oracle in the container ci/oracle.Containerfile
+# builds (Arch's tree 2.3.2-1 by sha256, as a non-root user: the fixtures
+# hold a FIFO and 0000 directories, RULES §5): tools/oracle over the
+# generated fixtures, tools/golden (C aspen's own golden suite, as it is),
+# tools/fuzz (its fuzzer's generator over v1's flags), tools/perf (the
+# listing within 2x of C aspen). macOS runs them against Homebrew's tree
+# 2.3.2 on the runner itself.
 #
 # THE TIERS (ruling #92, wolf-lang's shape as lope has it; ci/tiers.py,
 # proven by ci/tiers-test.py in `plan-test`):
@@ -85,6 +94,76 @@ jobs:
     needs: plan
     if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'linux')
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ASPEN_ENGINE: docker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: the pinned toolchain, by digest
+        run: tools/fetch-toolchain
+
+      - name: wolf fmt --check
+        if: ${{ !cancelled() }}
+        run: tools/check-fmt
+
+      - name: build, both tiers
+        if: ${{ !cancelled() }}
+        run: tools/build --all
+
+      - name: the unit tests, checked machine (fallbacks rerun, wolf-lang#817), native, lupin
+        if: ${{ !cancelled() }}
+        run: tools/check-test
+
+      - name: C aspen at aspen.pin, its tree clean
+        if: ${{ !cancelled() }}
+        run: |
+          tools/fetch-c-aspen
+          test -z "$(git -C .oracle/c-aspen status --porcelain --untracked-files=no)"
+
+      - name: the oracle's container (tree 2.3.2-1 by sha256), and C aspen built in it
+        if: ${{ !cancelled() }}
+        run: |
+          tools/in-container 'tree --version; id'
+          tools/in-container 'cd .oracle/c-aspen && ./configure >/dev/null && make -s && ./aspen --version'
+
+      - name: the oracle on the fixtures, native tier
+        if: ${{ !cancelled() }}
+        run: tools/in-container tools/oracle --bin target/native/aspen
+
+      - name: the oracle on the fixtures, release tier
+        if: ${{ !cancelled() }}
+        run: tools/in-container tools/oracle --bin target/release/aspen
+
+      - name: C aspen's golden suite against aspen, release tier (the oracle of record)
+        if: ${{ !cancelled() }}
+        run: tools/in-container tools/golden --bin target/release/aspen
+
+      - name: the differential fuzzer, v1's flags (C aspen's generator)
+        if: ${{ !cancelled() }}
+        run: tools/in-container tools/fuzz --bin target/release/aspen --n 200
+
+      - name: the perf row, the listing within 2x of C aspen (taskset -c 0-3)
+        if: ${{ !cancelled() }}
+        run: tools/in-container tools/perf --bin target/release/aspen
+
+      - name: the static x86-64 build, twice, and its digest (PAX)
+        if: ${{ !cancelled() }}
+        run: tools/mkaspen target/mkaspen
+
+      - name: the oracle on the static binary
+        if: ${{ !cancelled() }}
+        run: tools/in-container tools/oracle --bin target/mkaspen/aspen
+
+      - name: the harnesses see a difference (the standing reds)
+        if: ${{ !cancelled() }}
+        run: tools/in-container tools/selftest target/release/aspen
+
+  macos:
+    name: macOS arm64
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'macos')
+    runs-on: macos-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -92,31 +171,13 @@ jobs:
       - name: the pinned toolchain, by digest
         run: tools/fetch-toolchain
 
-      - name: the toolchain answers to its pin
+      - name: build, both tiers
         if: ${{ !cancelled() }}
-        run: |
-          .wolf-bin/wolf --version
-          .wolf-bin/lupin --version
-          cat .wolf-bin/std/STD-REV
+        run: tools/build --all
 
-  macos:
-    name: macOS arm64
-    needs: plan
-    if: contains(fromJSON(needs.plan.outputs.jobs || '[]'), 'macos')
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: the pinned toolchain, by digest
-        run: tools/fetch-toolchain
-
-      - name: the toolchain answers to its pin
+      - name: the unit tests, checked machine, native, lupin
         if: ${{ !cancelled() }}
-        run: |
-          .wolf-bin/wolf --version
-          .wolf-bin/lupin --version
-          cat .wolf-bin/std/STD-REV
+        run: tools/check-test
 
       - name: the oracle, from Homebrew (tree 2.3.2)
         if: ${{ !cancelled() }}
@@ -124,6 +185,27 @@ jobs:
           brew install tree
           tree --version
           tree --version | grep -q '^tree v2\.3\.2 '
+
+      - name: C aspen at aspen.pin, built
+        if: ${{ !cancelled() }}
+        run: |
+          tools/fetch-c-aspen
+          test -z "$(git -C .oracle/c-aspen status --porcelain --untracked-files=no)"
+          cd .oracle/c-aspen && ./configure >/dev/null && make -s && ./aspen --version
+
+      # macOS has no container: the runner is an ephemeral VM, and the
+      # fixtures' FIFO and socket are Linux-only (tests/fixtures/mkfixtures)
+      - name: the oracle on the fixtures, release tier
+        if: ${{ !cancelled() }}
+        run: tools/oracle --bin target/release/aspen
+
+      - name: C aspen's golden suite against aspen, release tier
+        if: ${{ !cancelled() }}
+        run: tools/golden --bin target/release/aspen
+
+      - name: the differential fuzzer, v1's flags
+        if: ${{ !cancelled() }}
+        run: tools/fuzz --bin target/release/aspen --n 100
 
   tier:
     name: tier ${{ needs.plan.outputs.tier || 'unplanned' }}
