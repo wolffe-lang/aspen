@@ -43,9 +43,10 @@ classify() {
 }
 
 # classify_report SCRIPT LINE: "ok" (a script's own pass line), "skip"
-# (its loud skip, counted), "v1" (a failure on an implemented surface) or
-# "v2" (a failure on a flag aspen refuses), for one line a C aspen golden
-# script printed.
+# (its loud skip, counted), "ub" (a difference from tree where tree's own
+# behaviour is undefined, counted and printed), "v1" (a failure on an
+# implemented surface) or "v2" (a failure on a flag aspen refuses), for
+# one line a C aspen golden script printed.
 classify_report() {
     _s=$1
     _l=$2
@@ -125,8 +126,15 @@ classify_report() {
         *) echo v1 ;;
         esac ;;
     adversarial.sh)
+        # its 64 KiB --fromfile line is tree 2.3.2's own buffer overflow:
+        # a 65,535-byte line aborts tree's fortified linux build ("***
+        # buffer overflow detected ***", status 134, which the script skips
+        # as a crash; 65,534 is fine), and Homebrew's macOS build survives
+        # it printing an empty name. Counted and printed as tree's
+        # undefined behaviour, a ruling asked (notes/ap01-the-second-light.md)
         case "$_l" in
         "ADVERSARIAL: hostile inputs survive"* | *"robustness win, parity skipped"*) echo ok ;;
+        "ADVERSARIAL[fromfile-64k-line]: diverges from tree"*) echo ub ;;
         *) echo v1 ;;
         esac ;;
     *) echo v1 ;;

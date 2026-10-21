@@ -77,6 +77,7 @@ differ=0
 notyet=0
 coll=0
 skips=0
+ubs=0
 
 # --- run.sh: every case of the matrix ------------------------------------
 sh tests/golden/run.sh >"$work/run.out" 2>"$work/run.err"
@@ -146,6 +147,7 @@ other() { # script, tag
         case "$_k" in
         ok) ;;
         skip) skips=$((skips + 1)); echo "  $_s SKIP: $_l" ;;
+        ub) ubs=$((ubs + 1)); _show=8; echo "  $_s TREE UB (tree's own undefined behaviour, a ruling asked): $_l" ;;
         v1) _v1=$((_v1 + 1)); _show=8; echo "  $_s v1: $_l" ;;
         *) _v2=$((_v2 + 1)) ;;
         esac
@@ -173,5 +175,5 @@ other threads.sh "THREADS"
 other deviations.sh "DEVIATIONS"
 other structural.sh "STRUCT"
 
-echo "golden: $agree agree / $differ differ / $notyet not-yet ($skips skip(s))"
+echo "golden: $agree agree / $differ differ / $notyet not-yet ($skips skip(s), $ubs report(s) on tree's undefined behaviour)"
 [ "$differ" = 0 ]
