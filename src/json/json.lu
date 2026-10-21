@@ -1,0 +1,284 @@
+//! json — `-J` (C aspen `src/render/json.c`, "faithful to tree's
+//! json.c"): the whole tree built first, then emitted as a nested array,
+//! a report object last. DEVIATION D2 is carried: after an error no
+//! later entry gets an empty contents array (`src/render/json.c:209`).
+//! `-i` (the unindented form) and `--compress` are ap01's, so the indent
+//! unit is always four spaces and every line ends with a newline.
+
+use clock
+use ent
+use info
+use opts
+use out
+
+/// The JSON renderer's state: its writer, the `-f` path stack, the zone
+/// and clock for `-D`, and the counts its report prints (the C counts in
+/// the renderer for nested formats, `src/render/json.c:160`).
+pub struct Json {
+    o: out.Out,
+    fp: List[byte],
+    zone: clock.Zone,
+    now: int,
+    dirs: int,
+    files: int,
+}
+
+/// A renderer writing to descriptor `fd`.
+pub fn new(fd: int, take zone: clock.Zone, now: int) -> Json {
+    let z: int = 0
+    Json { o: out.to_fd(fd), fp: List[byte](), zone: zone, now: now, dirs: z, files: z }
+}
+
+/// RFC 8259 escaping, tree's json_encode (`src/render/json.c:42`): the
+/// two-character escapes for backspace, tab, newline, form feed, carriage
+/// return and NUL, a six-character unicode escape for the other controls,
+/// a backslash before a quote or a backslash; every other byte, UTF-8
+/// included, as is.
+fn enc(mut o: out.Out, s: List[byte], from: int, to: int) {
+    let hex = "0123456789abcdef"
+    var i = from
+    while i < to {
+        let c = s[i] as int
+        if c < 32 {
+            if c == 8 {
+                out.s(mut o, "\\b")
+            } else if c == 9 {
+                out.s(mut o, "\\t")
+            } else if c == 10 {
+                out.s(mut o, "\\n")
+            } else if c == 12 {
+                out.s(mut o, "\\f")
+            } else if c == 13 {
+                out.s(mut o, "\\r")
+            } else if c == 0 {
+                out.s(mut o, "\\0")
+            } else {
+                out.s(mut o, "\\u00")
+                out.s(mut o, hex[c / 16..c / 16 + 1])
+                out.s(mut o, hex[c % 16..c % 16 + 1])
+            }
+        } else if c == 34 || c == 92 {
+            out.c(mut o, 92)
+            out.c(mut o, c)
+        } else {
+            (mut o.buf).push(s[i])
+        }
+        i += 1
+    }
+}
+
+fn enc_str(mut o: out.Out, s: str) {
+    var b = List[byte]()
+    for x in s.bytes() {
+        (mut b).push(x)
+    }
+    enc(mut o, b, 0, b.len)
+}
+
+fn indent(mut j: Json, level: int) {
+    var i = 0
+    while i <= level {
+        out.s(mut j.o, "    ")
+        i += 1
+    }
+}
+
+fn oct4(n: int) -> str {
+    let d3 = n / 512 % 8
+    let d2 = n / 64 % 8
+    let d1 = n / 8 % 8
+    let d0 = n % 8
+    "{d3}{d2}{d1}{d0}"
+}
+
+/// The metadata keys (`src/render/json.c:78`): v1's mode and prot, size
+/// and time.
+fn fill(mut j: Json, o: opts.Opts, st: ent.Meta) {
+    if o.permflag {
+        let p = info.prot(st.kind, st.mode)
+        out.s(mut j.o, ",\"mode\":\"{oct4(st.mode)}\",\"prot\":\"{p}\"")
+    }
+    if o.sizeflag {
+        if o.humanflag {
+            let h = info.psize(true, st.size).trim_start()
+            out.s(mut j.o, ",\"size\":\"{h}\"")
+        } else {
+            out.s(mut j.o, ",\"size\":{st.size}")
+        }
+    }
+    if o.dateflag {
+        let d = info.date(j.zone, j.now, st.mtime)
+        out.s(mut j.o, ",\"time\":\"{d}\"")
+    }
+}
+
+/// The document's opening bracket.
+pub fn begin(mut j: Json) {
+    out.s(mut j.o, "[\n")
+}
+
+fn head(mut j: Json, o: opts.Opts, e: ent.Ent) {
+    out.s(mut j.o, "{{\"type\":\"")
+    out.s(mut j.o, ent.type_name(e.kind))
+    out.s(mut j.o, "\",\"name\":\"")
+    if o.fullpath {
+        enc(mut j.o, j.fp, 0, j.fp.len)
+    } else {
+        enc(mut j.o, e.nm, 1, e.nm.len)
+    }
+    out.c(mut j.o, 34)
+    if e.has_lnk {
+        out.s(mut j.o, ",\"target\":\"")
+        enc(mut j.o, e.lnk, 0, e.lnk.len)
+        out.c(mut j.o, 34)
+    }
+    if e.has_st {
+        fill(mut j, o, e.st)
+    }
+}
+
+/// One level of the built tree (`src/render/json.c:151`); `ents` is the
+/// walk's arena, `arr` this level's indices in display order.
+pub fn level(mut j: Json, o: opts.Opts, ents: List[ent.Ent], arr: List[int], depth: int) {
+    let n = arr.len
+    var i = 0
+    while i < n {
+        let k = arr[i]
+        let last = i + 1 == n
+        let dl = ent.dir_like(ents[k])
+        if dl {
+            j.dirs += 1
+        } else {
+            j.files += 1
+        }
+        let saved = j.fp.len
+        if o.fullpath {
+            (mut j.fp).push(47 as byte)
+            var x = 1
+            while x < ents[k].nm.len {
+                (mut j.fp).push(ents[k].nm[x])
+                x += 1
+            }
+        }
+        indent(mut j, depth)
+        head(mut j, o, ents[k])
+        let kids = ents[k].has_child && ents[k].child.len > 0
+        let direrr = dl && ents[k].err.len > 0 && !kids
+        if kids {
+            out.s(mut j.o, ",\"contents\":[\n")
+            level(mut j, o, ents, ents[k].child, depth + 1)
+            indent(mut j, depth)
+            out.s(mut j.o, "]}}")
+        } else if direrr {
+            out.s(mut j.o, ",\"contents\":[{{\"error\": \"")
+            out.s(mut j.o, ents[k].err)
+            out.s(mut j.o, "\"}}    ]}}")
+        } else {
+            out.c(mut j.o, 125)
+        }
+        if !last {
+            out.c(mut j.o, 44)
+        }
+        out.c(mut j.o, 10)
+        if o.fullpath {
+            var cut = List[byte]()
+            var x = 0
+            while x < saved {
+                (mut cut).push(j.fp[x])
+                x += 1
+            }
+            j.fp = cut
+        }
+        out.maybe(mut j.o)
+        i += 1
+    }
+}
+
+/// A root that could not be opened (`src/render/json.c:269`): typed by
+/// its `lstat` when it has one, "unknown" when it does not exist.
+pub fn failed_root(mut j: Json, o: opts.Opts, root: str, st: ent.Meta, has_st: bool, last: bool) {
+    indent(mut j, 0)
+    let ft = if has_st then ent.type_name(st.kind) else "unknown"
+    out.s(mut j.o, "{{\"type\":\"")
+    out.s(mut j.o, ft)
+    out.s(mut j.o, "\",\"name\":\"")
+    enc_str(mut j.o, root)
+    out.c(mut j.o, 34)
+    if has_st {
+        fill(mut j, o, st)
+    }
+    out.s(mut j.o, ",\"contents\":[{{\"error\": \"error opening dir\"}}\n")
+    indent(mut j, 0)
+    out.s(mut j.o, "]}}")
+    if !last {
+        out.c(mut j.o, 44)
+    }
+    out.c(mut j.o, 10)
+}
+
+/// An opened root and its built tree (`src/render/json.c:294`): the root
+/// counts as a directory, and has a contents array, only when it has at
+/// least one entry.
+pub fn tree(
+    mut j: Json,
+    o: opts.Opts,
+    root: str,
+    st: ent.Meta,
+    has_st: bool,
+    ents: List[ent.Ent],
+    top: List[int],
+    last: bool,
+) {
+    indent(mut j, 0)
+    let rtype = if has_st && st.kind != 1 then ent.type_name(st.kind) else "directory"
+    out.s(mut j.o, "{{\"type\":\"")
+    out.s(mut j.o, rtype)
+    out.s(mut j.o, "\",\"name\":\"")
+    enc_str(mut j.o, root)
+    out.c(mut j.o, 34)
+    if has_st {
+        fill(mut j, o, st)
+    }
+    if top.len > 0 {
+        j.dirs += 1
+        if o.fullpath {
+            var b = List[byte]()
+            for x in root.bytes() {
+                (mut b).push(x)
+            }
+            j.fp = b
+        }
+        out.s(mut j.o, ",\"contents\":[\n")
+        level(mut j, o, ents, top, 1)
+        indent(mut j, 0)
+        out.s(mut j.o, "]}}")
+    } else {
+        out.c(mut j.o, 125)
+    }
+    if !last {
+        out.c(mut j.o, 44)
+    }
+    out.c(mut j.o, 10)
+    out.maybe(mut j.o)
+}
+
+/// The report object (`src/render/json.c:242`).
+pub fn report(mut j: Json, o: opts.Opts, size: int) {
+    out.c(mut j.o, 44)
+    indent(mut j, 0)
+    out.s(mut j.o, "{{\"type\":\"report\"")
+    if o.duflag {
+        out.s(mut j.o, ",\"size\":{size}")
+    }
+    out.s(mut j.o, ",\"directories\":{j.dirs}")
+    if !o.dirsonly {
+        out.s(mut j.o, ",\"files\":{j.files}")
+    }
+    out.c(mut j.o, 125)
+}
+
+/// The document's close, and the flush.
+pub fn end(mut j: Json) {
+    out.s(mut j.o, "\n]\n")
+    out.flush(mut j.o)
+}
