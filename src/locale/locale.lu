@@ -69,10 +69,6 @@ fn normalized(name: str) -> str {
 }
 
 fn installed(name: str) -> bool {
-    let low = name.lower()
-    if low == "c.utf-8" || low == "c.utf8" {
-        return true
-    }
     let norm = normalized(name)
     if fs_is_file("/usr/lib/locale/{name}/LC_CTYPE") ||
         fs_is_file("/usr/lib/locale/{norm}/LC_CTYPE") {
