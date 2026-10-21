@@ -1,0 +1,52 @@
+# aspen — the pinned toolchain.
+#
+# wolf and lupin come from their RELEASE ARCHIVES, pinned by sha256
+# digest, never from a source build (lope's and boreutils' shape).
+# `tools/fetch-toolchain` downloads the archive for this host, refuses
+# on a digest mismatch, and stages the whole archive into `.wolf-bin/`
+# (gitignored): the native tier needs `libwolf_rt.a` beside the driver.
+#
+# Identity is the FIRST line of `--version`: `tools/lib-toolchain.sh`
+# refuses when it drifts from `version_line`. `rev` is information: the
+# commit the tag names.
+#
+# ## The first pin: wolf 0.2.33 / lupin 0.1.55 / wolf-std e036bec (ap00, 2026-10-21)
+#
+# `gh release list -R wolffe-lang/wolf-lang` at the start: v0.2.33 is the
+# latest, so 0.2.33 is pinned. Digests read twice from the release API
+# (wolf-lang release 417610226, wolf-interp release 418932753), equal
+# both times, and the linux x86-64 pair hashed twice after download on
+# kasumi. The tag objects: v0.2.33 `56110e4f` -> `85dab5d7`, v0.1.55
+# `047184fb` -> `e642f263`.
+#
+# wolf 0.2.33's `--version` line 2 names lupin 0.1.54 as its pairing;
+# the contract pins lupin 0.1.55 (released 2026-10-20), the reference
+# interpreter wolf-std `e036bec` vendors (`df04a7a`), so the pair is
+# std's, not the driver's. The wolf archive bundles wolf-std `cceda63`
+# (`std/STD-REV`); `tools/fetch-toolchain` stages the std pin below in
+# its place and says so.
+#
+# Windows is not pinned: aspen lists POSIX directory trees.
+
+[wolf]
+version = "0.2.33"
+repo = "wolffe-lang/wolf-lang"
+rev = "85dab5d7e597680d6fd7034f1d7ed2acb9a92f97"
+version_line = "wolf 0.2.33 (wolfgang, pin 85dab5d)"
+aarch64-apple-darwin = "9152dbd136d858539100088394cbaa97cf23f7ddd2816512cd9b48c70a9f40eb"
+x86_64-unknown-linux-gnu = "4f955e8dfe6eaafa441903eeba43c009c4ec2b45a8da09fe13431e8b12340af8"
+aarch64-unknown-linux-gnu = "24cde9e4668d17448527f774db602d93a348d285c2219a1edff791519530a2ac"
+
+[lupin]
+version = "0.1.55"
+repo = "wolffe-lang/wolf-interp"
+rev = "e642f2630ad4c7f53740428d5cca705f2e0d295b"
+version_line = "lupin 0.1.55 (wolf-interp, reference interpreter at pin 294d626)"
+aarch64-apple-darwin = "2eac1cccdc8a5bec5831787604098982a7ac42e41561a037c3b5ccf0ac21741a"
+x86_64-unknown-linux-gnu = "1152abc0bef65d334b94bc881a26463fac345919cc2ca07a291796e6048a8a38"
+aarch64-unknown-linux-gnu = "5854ab268a835bb75749bce7601441858ac342351906a0838e8602e4edbd45d7"
+
+[std]
+# The tree is pinned by commit: git's object hash is the digest.
+repo = "wolffe-lang/wolf-std"
+rev = "e036bec318ad81ecd5a025612bc2c2adb17527f3"
