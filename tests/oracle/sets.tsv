@@ -1,0 +1,118 @@
+# tests/oracle/sets.tsv — the option sets tools/oracle runs over every
+# fixture (tests/fixtures/mkfixtures), one invocation per line:
+#   id <TAB> class <TAB> arguments
+# class v1: aspen must agree with `tree -n` byte for byte (stdout, stderr
+# with the program name normalised, exit status; -o FILE's file too).
+# class v2: aspen refuses the option by name, exit 2; tree's answer is
+# measured and printed (status, bytes, lines) so ap01 starts from numbers.
+# Arguments are shell words (no globbing); %O is an output file per side.
+default	v1	
+all	v1	-a
+dirs	v1	-d
+level1	v1	-L 1
+level2	v1	-L 2
+level-glued	v1	-L3
+level-zero	v1	-L 0
+level-hex	v1	-L 0x2
+level-junk	v1	-L 2x
+level-missing	v1	-L
+full	v1	-f
+full-all	v1	-f -a
+classify	v1	-F
+classify-dirs	v1	-dF
+perms	v1	-p
+size	v1	-s
+human	v1	-h
+date	v1	-D
+meta	v1	-psD
+dirsfirst	v1	--dirsfirst
+reverse	v1	-r
+reverse-dirsfirst	v1	-r --dirsfirst
+mtime	v1	-t
+mtime-reverse	v1	-t -r
+ignore	v1	-I '*.txt'
+ignore-dir	v1	-I 'alpha|sub'
+pattern	v1	-P '*.txt'
+pattern-alt	v1	-P 'a*|*.log'
+pattern-class	v1	-P '[a-c]*'
+pattern-negclass	v1	-P '[^a-s]*'
+pattern-path	v1	-P 'alpha/*'
+pattern-dironly	v1	-P 'sub/'
+pattern-all	v1	-a -P '.h*'
+ignore-case	v1	--ignore-case -P '*.TXT'
+matchdirs	v1	--matchdirs -P 'sub*'
+matchdirs-prune	v1	--matchdirs --prune -P 'beta'
+noreport	v1	--noreport
+ansi	v1	-A
+ansi-classify	v1	-A -F
+json	v1	-J
+json-all	v1	-J -a
+json-full	v1	-J -f
+json-meta	v1	-J -p -s -D
+json-human	v1	-J -h
+json-dirs	v1	-J -d
+json-level	v1	-J -L 1
+json-du	v1	-J --du
+json-prune	v1	-J --prune -P '*.txt'
+json-noreport	v1	-J --noreport
+prune	v1	--prune
+prune-pattern	v1	--prune -P '*.c'
+prune-dirs	v1	--prune -d
+du	v1	--du
+du-human	v1	--du -h
+du-level	v1	--du -L 1
+du-dirs	v1	--du -d
+out	v1	-o %O
+out-json	v1	-o %O -J
+out-meta	v1	-o %O -s -D
+combo	v1	-a -F -p -s -D --dirsfirst
+combo-full	v1	-a -f -F -r
+end-of-options	v1	--
+bad-long	v1	--bogus
+bad-short	v1	-aZd
+missing-pattern	v1	-P
+help	v1	--help
+color	v2	-C
+html	v2	-H .
+xml	v2	-X
+follow	v2	-l
+xdev	v2	-x
+fromfile	v2	--fromfile
+fromtabfile	v2	--fromtabfile
+fflinks	v2	--fflinks
+filelimit	v2	--filelimit 3
+charset	v2	--charset=ascii
+cp437	v2	-S
+version-sort	v2	-v
+sort	v2	--sort=size
+user	v2	-u
+group	v2	-g
+inodes	v2	--inodes
+device	v2	--device
+qmark	v2	-q
+noprint	v2	-N
+quote	v2	-Q
+timefmt	v2	--timefmt %F
+rerun	v2	-R
+noindent	v2	-i
+ctime	v2	-c
+unsorted	v2	-U
+filesfirst	v2	--filesfirst
+si	v2	--si
+metafirst	v2	--metafirst
+gitignore	v2	--gitignore
+gitfile	v2	--gitfile=.gitignore
+info	v2	--info
+infofile	v2	--infofile=x
+condense	v2	--condense
+compress	v2	--compress 2
+hyperlink	v2	--hyperlink
+scheme	v2	--scheme ssh://
+authority	v2	--authority x
+opt-toggle	v2	--opt-toggle
+title	v2	-T x
+nolinks	v2	--nolinks
+hintro	v2	--hintro=/dev/null
+houtro	v2	--houtro=/dev/null
+acl	v2	--acl
+selinux	v2	--selinux
