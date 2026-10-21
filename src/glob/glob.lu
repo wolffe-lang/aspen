@@ -1,0 +1,237 @@
+//! glob — tree's wild-card matcher, as C aspen ports it (`src/glob.c`,
+//! "Ported from tree's patmatch() ... Behavior must stay identical"; its
+//! provenance is recorded in docs/MAP.md). Not fnmatch: literals, `?`,
+//! `*` (stops at `/`), `**` (crosses `/`), `[..]`/`[^..]` classes with
+//! ranges and `\` escapes, `|` alternation, and a trailing `/` that makes
+//! a pattern match directories only. 1 a match, 0 none, -1 a syntax
+//! error (which tree, and so aspen, counts as a match:
+//! `src/traverse.c:245`).
+//!
+//! The C walks NUL-terminated `char *`s; here a name is bytes with an
+//! end index and a pattern bytes with an end index, and reading past
+//! either end reads the 0 the C would have read at its terminator. A
+//! `char` is signed on both hosts the C targets (x86-64 and Apple
+//! arm64), so a class range compares bytes at or above 0x80 as negative
+//! numbers, as the C does (`src/glob.c:51`). Case folding is
+//! `tolower`'s, ASCII only in every locale aspen reaches.
+
+fn at(s: List[byte], i: int, end: int) -> int {
+    if i >= end || i < 0 {
+        return 0
+    }
+    s[i] as int
+}
+
+fn signed(c: int) -> int {
+    if c >= 128 then c - 256 else c
+}
+
+fn low(c: int, ic: bool) -> int {
+    if ic && c >= 65 && c <= 90 {
+        return c + 32
+    }
+    c
+}
+
+fn sl(c: int, ic: bool) -> int {
+    signed(low(c, ic))
+}
+
+/// Match `buf[b0..bend]` against `pat[p0..pend]` (`src/glob.c:13`).
+pub fn patmatch(
+    buf: List[byte],
+    b0: int,
+    bend: int,
+    pat: List[byte],
+    p0: int,
+    pend: int,
+    isdir: bool,
+    ic: bool,
+) -> int {
+    var bar = -1
+    var k = p0
+    while k < pend {
+        if pat[k] as int == 124 {
+            bar = k
+            break
+        }
+        k += 1
+    }
+    if bar >= 0 {
+        if bar == p0 || bar + 1 >= pend {
+            return -1
+        }
+        var m = patmatch(buf, b0, bend, pat, p0, bar, isdir, ic)
+        if m == 0 {
+            m = patmatch(buf, b0, bend, pat, bar + 1, pend, isdir, ic)
+        }
+        return m
+    }
+    var b = b0
+    var p = p0
+    var mt = 1
+    var pprev = 0
+    while at(pat, p, pend) != 0 && mt != 0 {
+        let pc = at(pat, p, pend)
+        if pc == 91 {
+            // [ ... ]
+            p += 1
+            var n = 1
+            if at(pat, p, pend) != 94 {
+                n = 1
+                mt = 0
+            } else {
+                p += 1
+                n = 0
+            }
+            while at(pat, p, pend) != 93 {
+                if at(pat, p, pend) == 92 {
+                    p += 1
+                }
+                if at(pat, p, pend) == 0 {
+                    return -1
+                }
+                if at(pat, p + 1, pend) == 45 {
+                    let m = at(pat, p, pend)
+                    p += 2
+                    if at(pat, p, pend) == 92 {
+                        p += 1
+                    }
+                    let cb = sl(at(buf, b, bend), ic)
+                    if cb >= sl(m, ic) && cb <= sl(at(pat, p, pend), ic) {
+                        mt = n
+                    }
+                    if at(pat, p, pend) == 0 {
+                        p -= 1
+                    }
+                } else if sl(at(buf, b, bend), ic) == sl(at(pat, p, pend), ic) {
+                    mt = n
+                }
+                p += 1
+            }
+            b += 1
+        } else if pc == 42 {
+            // *
+            p += 1
+            if at(pat, p, pend) == 0 {
+                var q = b
+                while q < bend {
+                    if buf[q] as int == 47 {
+                        return 0
+                    }
+                    q += 1
+                }
+                return 1
+            }
+            mt = 0
+            if at(pat, p, pend) == 42 {
+                p += 1
+                if at(pat, p, pend) == 0 {
+                    return 1
+                }
+                while at(buf, b, bend) != 0 {
+                    mt = patmatch(buf, b, bend, pat, p, pend, isdir, ic)
+                    if mt != 0 {
+                        break
+                    }
+                    if pprev == 47 && at(pat, p, pend) == 47 && at(pat, p + 1, pend) != 0 {
+                        mt = patmatch(buf, b, bend, pat, p + 1, pend, isdir, ic)
+                        if mt != 0 {
+                            return mt
+                        }
+                    }
+                    b += 1
+                    while at(buf, b, bend) != 0 && at(buf, b, bend) != 47 {
+                        b += 1
+                    }
+                }
+            } else {
+                while at(buf, b, bend) != 0 {
+                    mt = patmatch(buf, b, bend, pat, p, pend, isdir, ic)
+                    b += 1
+                    if mt != 0 {
+                        break
+                    }
+                    if at(buf, b, bend) == 47 {
+                        break
+                    }
+                }
+            }
+            if mt == 0 && (at(buf, b, bend) == 0 || at(buf, b, bend) == 47) {
+                mt = patmatch(buf, b, bend, pat, p, pend, isdir, ic)
+            }
+            return mt
+        } else if pc == 63 {
+            // ?
+            if at(buf, b, bend) == 0 {
+                return 0
+            }
+            b += 1
+        } else if pc == 47 {
+            // /
+            if at(pat, p + 1, pend) == 0 && at(buf, b, bend) == 0 {
+                return if isdir then 1 else 0
+            }
+            mt = if at(buf, b, bend) == pc then 1 else 0
+            b += 1
+        } else {
+            if pc == 92 {
+                p += 1
+            }
+            mt = if sl(at(buf, b, bend), ic) == sl(at(pat, p, pend), ic) then 1 else 0
+            b += 1
+        }
+        pprev = at(pat, p, pend)
+        p += 1
+        if mt < 1 {
+            return mt
+        }
+    }
+    if at(buf, b, bend) == 0 {
+        return mt
+    }
+    0
+}
+
+/// Whether any pattern matches `name` (`src/traverse.c:243`, a syntax
+/// error counting as a match).
+pub fn any(
+    pats: List[List[byte]],
+    name: List[byte],
+    from: int,
+    to: int,
+    isdir: bool,
+    ic: bool,
+) -> bool {
+    for p in pats {
+        if patmatch(name, from, to, p, 0, p.len, isdir, ic) != 0 {
+            return true
+        }
+    }
+    false
+}
+
+/// tree 2.3.2's -P/-I match (`src/traverse.c:259`): the BASENAME, the
+/// FULL PATH from the walk root, or any `/`-suffix of that path.
+/// `full` is the entry's path, `nfrom` where its name starts in `full`.
+pub fn full(pats: List[List[byte]], full: List[byte], nfrom: int, isdir: bool, ic: bool) -> bool {
+    let n = full.len
+    for p in pats {
+        if patmatch(full, nfrom, n, p, 0, p.len, isdir, ic) != 0 {
+            return true
+        }
+        if patmatch(full, 0, n, p, 0, p.len, isdir, ic) != 0 {
+            return true
+        }
+        var i = 0
+        while i < n {
+            if full[i] as int == 47 {
+                if patmatch(full, i + 1, n, p, 0, p.len, isdir, ic) != 0 {
+                    return true
+                }
+            }
+            i += 1
+        }
+    }
+    false
+}
