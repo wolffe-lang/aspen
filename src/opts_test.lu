@@ -1,0 +1,59 @@
+//! The command line's rows: -L's number as tree reads it (strtoul, base
+//! 0, the int cast), the v1 flags, the refusals and the usage errors.
+
+use opts
+
+fn words(s: str) -> List[str] {
+    var out = List[str]()
+    for w in s.words() {
+        (mut out).push(w)
+    }
+    out
+}
+
+fn main() {
+    assert(opts.level_int("2") == 2, "decimal")
+    assert(opts.level_int("0x2") == 2, "hex")
+    assert(opts.level_int("010") == 8, "octal")
+    assert(opts.level_int("5x") == 5, "trailing junk ignored")
+    assert(opts.level_int("abc") == 0, "no digits")
+    assert(opts.level_int("  7") == 7, "leading space")
+    assert(opts.level_int("+3") == 3, "a plus sign")
+    assert(opts.level_int("-1") == -1, "a minus sign wraps")
+    assert(opts.level_int("4294967297") == 1, "the int cast keeps 32 bits")
+    assert(opts.level_int("99999999999999999999") == -1, "overflow is ULONG_MAX")
+    assert(opts.level_int("0x") == 0, "0x with no digit is 0")
+    let p = opts.parse(words("-a -L 2 -P *.c -I x --du -J dir1 dir2"), false)
+    assert(p.stop == -1, "a v1 line parses")
+    assert(p.o.all && p.o.level == 2 && p.o.duflag && p.o.sizeflag && p.o.json, "the flags")
+    assert(p.o.patterns.len == 1 && p.o.ipatterns.len == 1, "the patterns")
+    assert(p.roots.len == 2 && p.roots[1] == "dir2", "the roots")
+    let g = opts.parse(words("-Pfoo -L3a"), false)
+    assert(g.stop == -1 && g.o.patterns.len == 1 && g.o.level == 3 && g.o.all, "glued forms")
+    let r = opts.parse(words("-a -X"), false)
+    assert(r.stop == 2 && r.err.contains("-X"), "a v2 flag is refused by name")
+    let r2 = opts.parse(words("--filelimit=3"), false)
+    assert(r2.stop == 2 && r2.err.contains("--filelimit"), "a v2 long flag too")
+    let bad = opts.parse(words("--bogus"), false)
+    assert(
+        bad.stop == 1 && bad.err.starts_with("aspen: Invalid argument `--bogus'."),
+        "an unknown long flag",
+    )
+    let bad2 = opts.parse(words("-Z"), false)
+    assert(
+        bad2.stop == 1 && bad2.err.starts_with("aspen: Invalid argument -`Z'."),
+        "an unknown short flag",
+    )
+    let lv = opts.parse(words("-L 0"), false)
+    assert(lv.stop == 1 && lv.err == "aspen: Invalid level, must be greater than 0.\n", "-L 0")
+    let miss = opts.parse(words("-L"), false)
+    assert(miss.stop == 1 && miss.err == "aspen: Missing argument to -L option.\n", "-L alone")
+    let end = opts.parse(words("-- -a"), false)
+    assert(end.stop == -1 && end.roots.len == 1 && end.roots[0] == "-a", "-- ends the options")
+    let dash = opts.parse(words("-"), false)
+    assert(dash.stop == -1 && dash.roots.len == 1, "- is a root")
+    let h = opts.parse(words("--help"), false)
+    assert(h.stop == 0 && h.out.starts_with("usage: aspen ["), "--help")
+    let v = opts.parse(words("--version"), false)
+    assert(v.stop == 0 && v.out == "aspen v0.1.0\n", "--version")
+}
