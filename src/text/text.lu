@@ -647,7 +647,7 @@ pub fn diff_line(
     } else {
         "\u{1b}[33m"
     }
-    let mark = if status == 0 then "[+] " else if status == 1 then "[-] " else "[~] "
+    let mark = if status == 0 then "[+] " else if status == 1 then "[-] " else "[*] "
     if status == 3 {
         out.s(mut t.o, "    ")
     } else {
