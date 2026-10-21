@@ -1,0 +1,194 @@
+//! text — the default listing (C aspen `src/render/unix.c`): indentation
+//! lines, the metadata column, the name (or `-f`'s full path), `-F`'s
+//! suffix, a link's ` -> target`, the error blurbs, the report line.
+//! Colour, `--hyperlink`, `--metafirst`, `-i`, `--compress` and `--info`
+//! comments are ap01's.
+
+use clock
+use ent
+use info
+use lines
+use name
+use opts
+use out
+
+/// The text renderer's state: its writer, the locale's UTF-8-ness, the
+/// line set, which ancestors were last at their depth, and the zone and
+/// clock for `-D`.
+pub struct Text {
+    o: out.Out,
+    utf8: bool,
+    ln: lines.Lines,
+    last: List[bool],
+    zone: clock.Zone,
+    now: int,
+}
+
+/// A renderer writing to descriptor `fd`.
+pub fn new(fd: int, utf8: bool, take ln: lines.Lines, take zone: clock.Zone, now: int) -> Text {
+    Text { o: out.to_fd(fd), utf8: utf8, ln: ln, last: List[bool](), zone: zone, now: now }
+}
+
+fn is_exec(mode: int) -> bool {
+    mode & 73 != 0
+}
+
+/// tree's `-F` suffix for an entry (`src/render/unix.c:95`).
+fn ftype(o: opts.Opts, kind: int, exe: bool) -> int {
+    if kind == 1 {
+        return if o.dirsonly then 0 else 47
+    }
+    if kind == 5 {
+        return 61
+    }
+    if kind == 4 {
+        return 124
+    }
+    if kind == 0 && exe {
+        return 42
+    }
+    0
+}
+
+/// The root's `-F` suffix, straight from its mode (`src/render/unix.c:110`).
+fn root_ftype(o: opts.Opts, st: ent.Meta) -> int {
+    if st.kind == 1 {
+        return if o.dirsonly then 0 else 47
+    }
+    if st.kind == 5 {
+        return 61
+    }
+    if st.kind == 4 {
+        return 124
+    }
+    if st.kind == 3 {
+        return 64
+    }
+    if st.kind == 0 && is_exec(st.mode) {
+        return 42
+    }
+    0
+}
+
+fn meta(mut t: Text, o: opts.Opts, st: ent.Meta, has: bool) {
+    if !has {
+        return
+    }
+    let col = info.fill(o, t.zone, t.now, st)
+    if col.len > 0 {
+        out.s(mut t.o, col)
+        out.s(mut t.o, "  ")
+    }
+}
+
+/// The root line (`src/render/unix.c:225`).
+pub fn root(mut t: Text, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st: bool) {
+    let failed = err.len > 0
+    meta(mut t, o, st, has_st)
+    name.put_str(mut t.o, path, t.utf8)
+    if o.classify {
+        var fc = 0
+        if has_st {
+            fc = root_ftype(o, st)
+        } else if !failed && !o.dirsonly {
+            fc = 47
+        }
+        if fc != 0 {
+            out.c(mut t.o, fc)
+        }
+    }
+    if failed {
+        out.s(mut t.o, "  [")
+        out.s(mut t.o, err)
+        out.c(mut t.o, 93)
+    }
+    out.c(mut t.o, 10)
+    out.maybe(mut t.o)
+}
+
+fn indent(mut t: Text, depth: int, is_last: bool) {
+    var i = 1
+    while i < depth {
+        if t.last[i] {
+            out.s(mut t.o, "   ")
+        } else {
+            out.bytes(mut t.o, t.ln.vert, 0, t.ln.vert.len)
+        }
+        out.c(mut t.o, 32)
+        i += 1
+    }
+    if is_last {
+        out.bytes(mut t.o, t.ln.corner, 0, t.ln.corner.len)
+    } else {
+        out.bytes(mut t.o, t.ln.vleft, 0, t.ln.vleft.len)
+    }
+    out.c(mut t.o, 32)
+    while t.last.len <= depth {
+        (mut t.last).push(false)
+    }
+    t.last[depth] = is_last
+}
+
+/// One entry, without its newline (`src/render/unix.c:268`). `path` is
+/// the entry's full path, printed in place of the name under `-f`.
+pub fn entry(mut t: Text, o: opts.Opts, e: ent.Ent, path: str, depth: int, is_last: bool) {
+    indent(mut t, depth, is_last)
+    meta(mut t, o, e.st, e.has_st)
+    if o.fullpath {
+        name.put_str(mut t.o, path, t.utf8)
+    } else {
+        name.put(mut t.o, e.nm, 1, e.nm.len, t.utf8)
+    }
+    if o.classify && !e.has_lnk {
+        let s = ftype(o, e.kind, e.flags & ent.f_exec() != 0)
+        if s != 0 {
+            out.c(mut t.o, s)
+        }
+    }
+    if e.has_lnk {
+        out.s(mut t.o, " -> ")
+        name.put(mut t.o, e.lnk, 0, e.lnk.len, t.utf8)
+        if o.classify {
+            let s = ftype(o, e.ltype, e.flags & ent.f_lexec() != 0)
+            if s != 0 {
+                out.c(mut t.o, s)
+            }
+        }
+    }
+    out.maybe(mut t.o)
+}
+
+/// `  [msg]` (`src/render/unix.c:347`).
+pub fn error(mut t: Text, msg: str) {
+    out.s(mut t.o, "  [")
+    out.s(mut t.o, msg)
+    out.c(mut t.o, 93)
+}
+
+/// End the current line.
+pub fn newline(mut t: Text) {
+    out.c(mut t.o, 10)
+    out.maybe(mut t.o)
+}
+
+/// The report (`src/render/unix.c:362`); the caller skips it under
+/// `--noreport`.
+pub fn report(mut t: Text, o: opts.Opts, dirs: int, files: int, size: int) {
+    out.c(mut t.o, 10)
+    if o.duflag {
+        out.s(mut t.o, info.psize(o.humanflag, size))
+        out.s(mut t.o, if o.humanflag then " used in " else " bytes used in ")
+    }
+    let d = if dirs == 1 then "directory" else "directories"
+    if o.dirsonly {
+        out.s(mut t.o, "{dirs} {d}\n")
+    } else {
+        let f = if files == 1 then "file" else "files"
+        out.s(mut t.o, "{dirs} {d}, {files} {f}\n")
+    }
+}
+
+/// Flush what is buffered.
+pub fn finish(mut t: Text) {
+    out.flush(mut t.o)
+}
