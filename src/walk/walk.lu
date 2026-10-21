@@ -1,76 +1,195 @@
 //! walk — the traversal (C aspen `src/traverse.c`, `src/sort.c`,
 //! `src/render.c`): read one directory, filter it, stat what a flag
-//! needs, sort it, and either stream it to the text renderer (the
-//! default) or build the whole tree first (`--du`, `--prune`,
-//! `--matchdirs`, and every `-J` run) and emit it after.
+//! needs, sort it, and either stream it to a line renderer (the default)
+//! or build the whole tree first (`--du`, `--prune`, `--matchdirs`,
+//! `--filelimit`, `--condense`, and every `-J`/`-X` run) and emit it
+//! after; `--fromfile` builds its tree from the input instead.
+//!
+//! The renderers are C aspen's two kinds (`src/render.h`): the line
+//! renderers, text and HTML, which the walk calls as it goes, and the
+//! nested ones, JSON and XML, which it hands each root's built tree.
+//! The C dispatches through function tables; here `fmt` picks the arm.
 //!
 //! The C walks fd-relative (`openat`, `getdents64`) and stats only when
 //! `d_type` is not enough (`src/traverse.c:188`); wolf-std's directory
 //! listing is path-based but answers `d_type` too (`fs_read_dir_entries`),
 //! so aspen also stats only for a flag that needs metadata, a symlink,
-//! or an entry whose type the host did not give. `-l`, `-x`,
-//! `--filelimit`, `--condense`, `--gitignore`, `--info`, `--fromfile`,
-//! `-R` and `-U` are ap01's.
+//! or an entry whose type the host did not give.
 
+use clock
+use color
 use ent
+use fromfile
+use gitignore
 use glob
-use std.os
+use html
+use info
+use infofile
 use json
+use lines
 use opts
+use std.os
 use text
+use vers
+use xml
 
-/// The walk's state: the output format and locale, both renderers (one
-/// is used), the built tree's arena, the totals and the error count.
-/// The options travel beside it, read-only.
-pub struct Walk {
+/// What a walk is built from, kept so `-R` can build another for a
+/// subtree's `00Tree.html` (`src/render/unix.c:388`).
+pub struct Env {
     utf8: bool,
-    is_json: bool,
+    macos: bool,
+    zone: clock.Zone,
+    now: int,
+    colors: color.Colors,
+    debug: bool,
+}
+
+/// The walk's state: the format, the renderers (one is used), the built
+/// tree's arena, the totals and the error count, the per-root state of
+/// the filters (`-l`'s seen set, `-x`'s device, the gitignore and info
+/// stacks), and the stat pool's plan. The options travel beside it,
+/// read-only.
+pub struct Walk {
+    env: Env,
+    fmt: int,
     t: text.Text,
+    h: html.Html,
     j: json.Json,
-    ents: List[ent.Ent],
-    lnks: List[List[byte]],
-    kids: List[List[int]],
+    x: xml.Xml,
+    a: ent.Arena,
     none: List[byte],
     dirs: int,
     files: int,
     size: int,
     errors: int,
+    seen: Map[str, bool],
+    root_dev: int,
+    igs: List[gitignore.Ignore],
+    infs: List[infofile.Info],
+    info_top: bool,
+    want_pool: bool,
+    workers: int,
+    pool: int,
 }
 
-/// A walk with the two renderers; `is_json` picks `-J`'s.
-pub fn new(is_json: bool, utf8: bool, take t: text.Text, take j: json.Json) -> Walk {
+/// A walk writing format `o.format` (the debug hook's own listing under
+/// `--asp-debug-walk`) to descriptor `fd`.
+pub fn make(o: opts.Opts, fd: int, e: Env) -> Walk {
+    let ln = lines.pick(o, e.utf8)
+    let (has_cs, cs) = lines.name(o, e.utf8)
     let z: int = 0
+    let (want_pool, workers) = pool_plan(o)
+    var c1 = info.cols(take copy e.zone, e.now, e.macos)
+    var c2 = info.cols(take copy e.zone, e.now, e.macos)
+    var c3 = info.cols(take copy e.zone, e.now, e.macos)
+    var c4 = info.cols(take copy e.zone, e.now, e.macos)
+    var t = text.new(fd, o, e.utf8, take copy ln, take c1, take copy e.colors)
+    t.debug = e.debug
+    let h = html.new(fd, o, e.utf8, take copy ln, has_cs, cs, take c2)
+    let j = json.new(fd, take c3)
+    let x = xml.new(fd, has_cs, cs, take c4)
     Walk {
-        utf8: utf8,
-        is_json: is_json,
+        env: copy e,
+        fmt: if e.debug then opts.out_unix() else o.format,
         t: t,
+        h: h,
         j: j,
-        ents: List[ent.Ent](),
-        lnks: List[List[byte]](),
-        kids: List[List[int]](),
+        x: x,
+        a: ent.arena(),
         none: List[byte](),
         dirs: z,
         files: z,
         size: z,
         errors: z,
+        seen: Map[str, bool](),
+        root_dev: z,
+        igs: List[gitignore.Ignore](),
+        infs: List[infofile.Info](),
+        info_top: false,
+        want_pool: want_pool,
+        workers: workers,
+        pool: z,
     }
+}
+
+fn is_tree_fmt(w: Walk) -> bool {
+    w.fmt == opts.out_json() || w.fmt == opts.out_xml()
 }
 
 fn is_exec(mode: int) -> bool {
     mode & 73 != 0
 }
 
-/// Any flag that needs the bracketed metadata column, or a sort by time:
-/// every entry is stat'ed (`src/traverse.c:202`, `:229`).
-fn want_st(o: opts.Opts) -> bool {
-    o.sizeflag || o.permflag || o.dateflag || o.duflag || o.sort == opts.sort_mtime()
+// ---- what to stat (`src/traverse.c:203`) ----
+
+/// Any flag that needs the bracketed metadata column.
+fn meta_wanted(o: opts.Opts) -> bool {
+    o.sizeflag ||
+        o.permflag ||
+        o.userflag ||
+        o.groupflag ||
+        o.dateflag ||
+        o.inodeflag ||
+        o.devflag ||
+        o.duflag
 }
 
-/// The modes that build the whole tree before emitting
-/// (`src/traverse.c:299`, v1's three).
-fn full_tree(o: opts.Opts) -> bool {
-    o.duflag || o.prune || o.matchdirs
+fn sort_needs_stat(o: opts.Opts) -> bool {
+    o.sort == opts.sort_size() || o.sort == opts.sort_mtime() || o.sort == opts.sort_ctime()
 }
+
+/// Does every entry need its full metadata (`want_entry_stat`)?
+fn want_st(o: opts.Opts) -> bool {
+    meta_wanted(o) || sort_needs_stat(o) || o.colorize
+}
+
+/// The type-only needs of a non-link (`nonlink_needs_stat`): `-F`'s exec
+/// bit, `-x`'s device, `-l`'s identity.
+fn nonlink_needs(t: int, o: opts.Opts) -> bool {
+    o.classify && t == ent.reg() || o.xdev && t == ent.dir() || o.follow && t == ent.dir()
+}
+
+fn root_needs_stat(o: opts.Opts) -> bool {
+    meta_wanted(o) || o.colorize || o.classify
+}
+
+/// The modes that build the whole tree before emitting (`needfulltree`).
+fn full_tree(o: opts.Opts) -> bool {
+    o.duflag || o.prune || o.matchdirs || o.filelimit > 0 || o.condense
+}
+
+/// The stat pool's plan (`asp_statprov_create`, `src/traverse.c:347`):
+/// wanted when some entry is stat'ed, `--threads 1` and `ASP_IO=serial`
+/// keep it serial, `--fromfile` stats nothing; the worker count is
+/// `--threads N`, else the CPUs wolf-std counts, at most 16.
+fn pool_plan(o: opts.Opts) -> (bool, int) {
+    let stat_heavy = want_st(o) || o.classify || o.xdev || o.follow
+    let io = env_get("ASP_IO") else ""
+    let serial = o.threads == 1 || io == "serial"
+    if !stat_heavy || serial || o.fromfile || o.fromtabfile {
+        return (false, 1)
+    }
+    if io == "uring" {
+        // C aspen's own notice where io_uring is unavailable; wolf has no
+        // io_uring surface (a ruling asked, notes/ap01-the-second-light.md)
+        eprint_raw(
+            "aspen: ASP_IO=uring requested but io_uring is unavailable; using the thread pool.\n",
+        )
+    }
+    var workers = o.threads
+    if workers <= 0 {
+        workers = os.cpus() else 1
+        if workers < 1 {
+            workers = 1
+        }
+        if workers > 16 {
+            workers = 16
+        }
+    }
+    (workers > 1, workers)
+}
+
+// ---- paths ----
 
 fn name_str(nm: List[byte]) -> str {
     // a name that is not UTF-8 cannot be a wolf path (wolf-lang#687); the
@@ -82,7 +201,24 @@ fn join(path: str, nm: List[byte]) -> str {
     "{path}/{name_str(nm)}"
 }
 
-/// The entry's path as bytes, for -P/-I's full-path match.
+/// The name an entry shows: `--condense`'s joined chain, else its own,
+/// as a row (byte 0 a placeholder, the name after it).
+fn shown(a: ent.Arena, e: ent.Ent) -> List[byte] {
+    if e.cname >= 0 {
+        return copy a.cnames[e.cname]
+    }
+    copy e.nm
+}
+
+fn join_shown(path: str, a: ent.Arena, e: ent.Ent) -> str {
+    if e.cname >= 0 {
+        return "{path}/{name_str(a.cnames[e.cname])}"
+    }
+    join(path, e.nm)
+}
+
+/// The entry's path as bytes, for the matchers: the directory's path, a
+/// `/`, the name.
 fn path_bytes(path: str, nm: List[byte]) -> List[byte] {
     var b = List[byte]()
     for x in path.bytes() {
@@ -97,10 +233,26 @@ fn path_bytes(path: str, nm: List[byte]) -> List[byte] {
     b
 }
 
+fn ident(ino: int, dev: int) -> str {
+    "{dev}:{ino}"
+}
+
+fn row_of(name: List[byte]) -> List[byte] {
+    var r = List[byte]()
+    (mut r).push(0 as byte)
+    for x in name {
+        (mut r).push(x)
+    }
+    r
+}
+
+// ---- one level ----
+
 /// One directory's entries, filtered and stat'ed (`src/traverse.c:434`).
 /// `rows` is what `fs_read_dir_entries(path)` answered; they are taken
-/// from its end, which reverses the host's order before the sort
-/// decides the real one.
+/// from its end, which reverses the host's order before the sort decides
+/// the real one, except under `-U`, where the host's order is the order
+/// shown and the rows are put back in it first.
 fn read_level(
     mut w: Walk,
     o: opts.Opts,
@@ -111,7 +263,18 @@ fn read_level(
     let want = want_st(o)
     let pats = o.patterns.len > 0
     let ipats = o.ipatterns.len > 0
+    let gits = o.gitignore && w.igs.len > 0
+    let infos = o.showinfo && w.infs.len > 0
+    let is_html = w.fmt == opts.out_html()
     var rs = rows
+    if o.sort == opts.sort_none() {
+        var rev = List[List[byte]]()
+        while rs.len > 0 {
+            let r = (mut rs).pop() else List[byte]()
+            (mut rev).push(r)
+        }
+        rs = rev
+    }
     var ev = List[ent.Ent]()
     var pend = List[int]()
     var pp = List[str]()
@@ -123,17 +286,25 @@ fn read_level(
         if !o.all && r[1] as int == 46 {
             continue
         }
+        if is_html && r.len == 12 && r[1] as int == 48 && name_str(r) == "00Tree.html" {
+            // -H hides the files -R writes (`src/traverse.c:447`)
+            continue
+        }
         var t = r[0] as int
         let lp = if t == ent.unknown() || t == ent.lnk() then join(path, r) else ""
         var e = ent.new_ent(take r, t)
         // the type the host did not give: lstat it (filtering needs it)
+        var have = false
         if t == ent.unknown() {
             let wds = fs_lstat(lp) else |_| {
                 w.errors += 1
                 continue
             }
+            have = true
             t = wds[0]
             e.kind = t
+            e.ino = wds[10]
+            e.dev = wds[9]
             if t == ent.reg() && is_exec(wds[4]) {
                 e.flags = e.flags | ent.f_exec()
             }
@@ -142,9 +313,10 @@ fn read_level(
                 e.has_st = true
             }
         }
-        let deferred = !e.has_st && t != ent.lnk() && (want || o.classify && t == ent.reg())
+        let deferred = !have && t != ent.lnk() && (want || nonlink_needs(t, o))
         if t == ent.lnk() {
             if want {
+                // the link's own lstat feeds the columns (D4)
                 let lw = fs_lstat(lp) else |_| {
                     w.errors += 1
                     continue
@@ -159,8 +331,8 @@ fn read_level(
                 }
                 m
             }
-            e.lnk = w.lnks.len
-            (mut w.lnks).push(target)
+            e.lnk = w.a.lnks.len
+            (mut w.a.lnks).push(target)
             var orphan = false
             let tw = fs_stat(lp) else |_| {
                 orphan = true
@@ -170,13 +342,27 @@ fn read_level(
                 e.flags = e.flags | ent.f_orphan()
             } else {
                 e.ltype = tw[0]
+                e.lmode = tw[4]
+                e.ino = tw[10]
+                e.dev = tw[9]
                 if e.ltype == ent.reg() && is_exec(tw[4]) {
                     e.flags = e.flags | ent.f_lexec()
                 }
             }
         }
         let isdir = t == ent.dir() || t == ent.lnk() && e.ltype == ent.dir()
-        if pats && !suppress && t != ent.dir() {
+        if gits {
+            let fb = path_bytes(path, e.nm)
+            if gitignore.filtered(w.igs, fb, fb.len - (e.nm.len - 1), isdir, o.ignorecase) {
+                continue
+            }
+        }
+        // -P applies to non-directories (a symlink to one too under -l);
+        // -I to everything; both match the name, the path, a path suffix
+        if pats &&
+            !suppress &&
+            t != ent.dir() &&
+            !(o.follow && t == ent.lnk() && e.ltype == ent.dir()) {
             let fb = path_bytes(path, e.nm)
             if !glob.full(o.patterns, fb, fb.len - (e.nm.len - 1), isdir, o.ignorecase) {
                 continue
@@ -191,6 +377,21 @@ fn read_level(
         if o.dirsonly && !isdir {
             continue
         }
+        if infos {
+            let fb = path_bytes(path, e.nm)
+            let (fk, ci) = infofile.check(
+                w.infs,
+                fb,
+                fb.len - (e.nm.len - 1),
+                w.info_top,
+                isdir,
+                o.ignorecase,
+            )
+            if fk >= 0 {
+                e.info = w.a.infos.len
+                (mut w.a.infos).push(copy w.infs[fk].comments[ci].desc)
+            }
+        }
         if deferred {
             // stat'ed after the filters, as a batch (`src/traverse.c:583`)
             (mut pend).push(ev.len)
@@ -204,12 +405,37 @@ fn read_level(
     ev
 }
 
+/// The words a deferred stat answers, by what the flags read: the mode
+/// (`-p`, `-F`, colour), the size, the times, the owners, the identity
+/// (`--inodes`, `--device`, `-x`, `-l`).
+struct Need {
+    mode: bool,
+    size: bool,
+    mtime: bool,
+    ctime: bool,
+    ids: bool,
+    ident: bool,
+}
+
+fn need_of(o: opts.Opts) -> Need {
+    Need {
+        mode: o.permflag || o.classify || o.colorize,
+        size: o.sizeflag || o.duflag || o.sort == opts.sort_size(),
+        mtime: o.dateflag && !o.ctimeflag || o.sort == opts.sort_mtime(),
+        ctime: o.dateflag && o.ctimeflag || o.sort == opts.sort_ctime(),
+        ids: o.userflag || o.groupflag,
+        ident: o.inodeflag || o.devflag || o.xdev || o.follow,
+    }
+}
+
 /// The deferred stats of one level (`src/traverse.c:393`): serial below
-/// C aspen's threshold of 384 (`ASP_STAT_PAR_MIN`), else on one task per
-/// 256 entries (`ASP_STAT_PER_WORKER`), at most the CPUs wolf-std counts
-/// and 16 (`src/pool.c:134`). Output is decided by name before any stat
-/// (the order is the sort's), so the split changes only the time. An
-/// entry whose stat fails is dropped, in order, and counted an error.
+/// C aspen's threshold of 384 (`ASP_STAT_PAR_MIN`); above it on the
+/// pool, sized at the first batch that crosses the threshold to one task
+/// per 256 entries (`ASP_STAT_PER_WORKER`) and at most the planned
+/// workers, then kept (`src/traverse.c:410`). Output is decided by name
+/// before any stat (the order is the sort's), so the split changes only
+/// the time. An entry whose stat fails is dropped, in order, and counted
+/// an error.
 fn stat_batch(
     mut w: Walk,
     o: opts.Opts,
@@ -219,19 +445,29 @@ fn stat_batch(
     want: bool,
 ) {
     let n = pp.len
-    let want_mode = o.permflag || o.classify
-    let want_size = o.sizeflag || o.duflag
-    let want_time = o.dateflag || o.sort == opts.sort_mtime()
-    var workers = (n + 255) / 256
-    let cpus = os.cpus() else 1
-    if workers > cpus {
-        workers = cpus
-    }
-    if workers > 16 {
-        workers = 16
+    let nd = need_of(o)
+    if w.want_pool && n >= 384 {
+        w.want_pool = false
+        var k = (n + 255) / 256
+        if k > w.workers {
+            k = w.workers
+        }
+        if k < 1 {
+            k = 1
+        }
+        w.pool = k
+        var tr = true
+        let _ = env_get("ASP_TRACE_POOL") else |_| {
+            tr = false
+            ""
+        }
+        if tr && k > 1 {
+            eprint_raw("aspen: stat-pool spawned {k} workers (batch={n})\n")
+        }
     }
     var failed = false
-    if n < 384 || workers < 2 {
+    let workers = if n >= 384 && w.pool > 1 then w.pool else 1
+    if workers < 2 {
         var k = 0
         while k < n {
             var ok = true
@@ -240,18 +476,24 @@ fn stat_batch(
                 List[int]()
             }
             if ok {
-                apply(mut ev, pend[k], sw[0], sw[4], sw[1], sw[14], sw[16], want)
+                apply(mut ev, pend[k], ent.meta_of(sw), want)
             } else {
-                ev[pend[k]].kind = -1
+                ev[pend[k]].flags = ev[pend[k]].flags | ent.f_stat_failed()
                 failed = true
             }
             k += 1
         }
     } else {
         // each task stats a contiguous chunk and answers with one message:
-        // its chunk number and a line per path ("kind mode size mtime
-        // ctime", or "x" for a failure); a channel carries no list
+        // its chunk number and a line per path (the words `nd` names, or
+        // "x" for a failure); a channel carries no list
         let ch = channel[(int, str)](workers)
+        let w_mode = nd.mode
+        let w_size = nd.size
+        let w_mtime = nd.mtime
+        let w_ctime = nd.ctime
+        let w_ids = nd.ids
+        let w_ident = nd.ident
         scope s {
             var c = 0
             while c < workers {
@@ -268,17 +510,26 @@ fn stat_batch(
                             List[int]()
                         }
                         if ok {
-                            // only the words a flag reads: kind and mode
-                            // (-p, -F), size (-s, --du), mtime (-D, -t)
-                            if want_mode {
-                                put_word(mut b, sw[0])
+                            put_word(mut b, sw[0])
+                            if w_mode {
                                 put_word(mut b, sw[4])
                             }
-                            if want_size {
+                            if w_size {
                                 put_word(mut b, sw[1])
                             }
-                            if want_time {
+                            if w_mtime {
                                 put_word(mut b, sw[14])
+                            }
+                            if w_ctime {
+                                put_word(mut b, sw[16])
+                            }
+                            if w_ids {
+                                put_word(mut b, sw[6])
+                                put_word(mut b, sw[7])
+                            }
+                            if w_ident {
+                                put_word(mut b, sw[10])
+                                put_word(mut b, sw[9])
                             }
                         } else {
                             (mut b).push(120 as byte)
@@ -306,33 +557,50 @@ fn stat_batch(
                 let len = text.len
                 while i < len {
                     if text.bytes()[i] as int == 120 {
-                        ev[pend[k]].kind = -1
+                        ev[pend[k]].flags = ev[pend[k]].flags | ent.f_stat_failed()
                         failed = true
                         i += 2
                     } else {
-                        var kind = ev[pend[k]].kind
-                        var mode = 0
-                        var size: int = 0
-                        var mtime: int = 0
-                        if want_mode {
+                        var m = ent.no_meta()
+                        let (v0, j0) = word(text, i)
+                        m.kind = v0
+                        i = j0
+                        if w_mode {
+                            let (v, j) = word(text, i)
+                            m.mode = v
+                            i = j
+                        }
+                        if w_size {
+                            let (v, j) = word(text, i)
+                            m.size = v
+                            i = j
+                        }
+                        if w_mtime {
+                            let (v, j) = word(text, i)
+                            m.mtime = v
+                            i = j
+                        }
+                        if w_ctime {
+                            let (v, j) = word(text, i)
+                            m.ctime = v
+                            i = j
+                        }
+                        if w_ids {
                             let (v1, j1) = word(text, i)
                             let (v2, j2) = word(text, j1)
-                            kind = v1
-                            mode = v2
+                            m.uid = v1
+                            m.gid = v2
                             i = j2
                         }
-                        if want_size {
-                            let (v, j) = word(text, i)
-                            size = v
-                            i = j
-                        }
-                        if want_time {
-                            let (v, j) = word(text, i)
-                            mtime = v
-                            i = j
+                        if w_ident {
+                            let (v1, j1) = word(text, i)
+                            let (v2, j2) = word(text, j1)
+                            m.ino = v1
+                            m.dev = v2
+                            i = j2
                         }
                         i += 1
-                        apply(mut ev, pend[k], kind, mode, size, mtime, 0, want)
+                        apply(mut ev, pend[k], m, want)
                     }
                     k += 1
                 }
@@ -346,7 +614,7 @@ fn stat_batch(
         var kept = List[ent.Ent]()
         var i = 0
         while i < ev.len {
-            if ev[i].kind == -1 {
+            if ev[i].flags & ent.f_stat_failed() != 0 {
                 w.errors += 1
             } else {
                 (mut kept).push(copy ev[i])
@@ -395,30 +663,26 @@ fn put_word(mut b: List[byte], v: int) {
     (mut b).push(32 as byte)
 }
 
-/// One stat's answer into entry `k`: the exec bit for `-F`, and the
-/// metadata when a flag wants it.
-fn apply(
-    mut ev: List[ent.Ent],
-    k: int,
-    kind: int,
-    mode: int,
-    size: int,
-    mtime: int,
-    ctime: int,
-    want: bool,
-) {
-    if ev[k].kind == ent.reg() && is_exec(mode) {
+/// One stat's answer into entry `k` (`stat_one`, `src/traverse.c:313`):
+/// the identity, the exec bit for `-F`, and the metadata when a flag
+/// wants it.
+fn apply(mut ev: List[ent.Ent], k: int, m: ent.Meta, want: bool) {
+    ev[k].ino = m.ino
+    ev[k].dev = m.dev
+    if ev[k].kind == ent.reg() && is_exec(m.mode) {
         ev[k].flags = ev[k].flags | ent.f_exec()
     }
     if want {
-        ev[k].st = ent.Meta { kind: kind, mode: mode, size: size, mtime: mtime, ctime: ctime }
+        ev[k].st = copy m
         ev[k].has_st = true
     }
 }
 
-/// Byte order of two names (`strcmp`, `src/sort.c:56`: v1 collates by
-/// byte in every locale, which C and C.UTF-8 do; `src/locale` says what a
-/// dictionary locale does instead).
+// ---- the sort (`src/sort.c`) ----
+
+/// Byte order of two names (`strcmp`, `src/sort.c:56`: the collation of
+/// C and C.UTF-8; `src/locale` says what a dictionary locale does
+/// instead).
 fn namecmp(a: List[byte], b: List[byte]) -> int {
     let na = a.len
     let nb = b.len
@@ -437,41 +701,66 @@ fn namecmp(a: List[byte], b: List[byte]) -> int {
     if na < nb then -1 else 1
 }
 
-/// tree's comparator (`src/sort.c:98`): `--dirsfirst`, then the base
-/// sort (name, or `-t`'s modification time with the name breaking ties),
-/// reversed by `-r` (`--dirsfirst` is not).
-fn cmp(o: opts.Opts, ev: List[ent.Ent], a: int, b: int) -> int {
-    if o.dirsfirst {
-        let da = ent.dir_like(ev[a])
-        let db = ent.dir_like(ev[b])
-        if da != db {
-            return if da then -1 else 1
-        }
+fn time_of(e: ent.Ent, ctime: bool) -> int {
+    if !e.has_st {
+        return 0
     }
+    if ctime then e.st.ctime else e.st.mtime
+}
+
+/// tree's base comparator (`src/sort.c:75`), reversed by `-r`.
+fn basecmp(o: opts.Opts, x: ent.Ent, y: ent.Ent) -> int {
     var v = 0
-    if o.sort == opts.sort_mtime() {
-        let ta = if ev[a].has_st then ev[a].st.mtime else 0
-        let tb = if ev[b].has_st then ev[b].st.mtime else 0
+    if o.sort == opts.sort_version() {
+        v = vers.cmp(x.nm, y.nm)
+    } else if o.sort == opts.sort_size() {
+        let sa = if x.has_st then x.st.size else 0
+        let sb = if y.has_st then y.st.size else 0
+        if sa == sb {
+            v = namecmp(x.nm, y.nm)
+        } else {
+            v = if sa < sb then 1 else -1
+        }
+    } else if o.sort == opts.sort_mtime() || o.sort == opts.sort_ctime() {
+        let c = o.sort == opts.sort_ctime()
+        let ta = time_of(x, c)
+        let tb = time_of(y, c)
         if ta == tb {
-            v = namecmp(ev[a].nm, ev[b].nm)
+            v = namecmp(x.nm, y.nm)
         } else {
             v = if ta < tb then -1 else 1
         }
     } else {
-        v = namecmp(ev[a].nm, ev[b].nm)
+        v = namecmp(x.nm, y.nm)
     }
     if o.reverse then -v else v
 }
 
-/// The display order of `ev`: a bottom-up merge sort of indices, O(n
-/// log n) (names in a directory are unique, so the order is total). The
-/// plain name order (no `-t`, no `--dirsfirst`) compares a packed key
-/// first: a name's first seven bytes as one `int` (no name holds a NUL,
-/// so a byte past the end is 0 and sorts first, as `strcmp` has it), and
-/// the bytes after them only when two keys tie; `-r` reverses that order
-/// whole, which is exact for unique names. C aspen sorts the same order
+/// tree's comparator (`src/sort.c:101`): `--dirsfirst`/`--filesfirst`,
+/// then the base sort.
+fn cmp(o: opts.Opts, ev: List[ent.Ent], a: int, b: int) -> int {
+    if o.dirsfirst || o.filesfirst {
+        let da = ent.dir_like(ev[a])
+        let db = ent.dir_like(ev[b])
+        if da != db {
+            if o.dirsfirst {
+                return if da then -1 else 1
+            }
+            return if da then 1 else -1
+        }
+    }
+    basecmp(o, ev[a], ev[b])
+}
+
+/// The display order of `ev` (`asp_sort`, `src/sort.c:214`): none under
+/// `-U`; else a bottom-up merge sort of indices, O(n log n). The plain
+/// name order (no other key, no `--dirsfirst`/`--filesfirst`) compares a
+/// packed key first: a name's first seven bytes as one `int` (no name
+/// holds a NUL, so a byte past the end is 0 and sorts first, as `strcmp`
+/// has it), the bytes after them only when two keys tie; `-r` reverses
+/// that order whole, exact for unique names. C aspen sorts the same order
 /// with an MSD radix (`src/sort.c:163`); every other order goes through
-/// `cmp`, tree's comparator.
+/// `cmp`, tree's comparator, total on unique names.
 fn order(o: opts.Opts, ev: List[ent.Ent]) -> List[int] {
     let n = ev.len
     var a = List[int]()
@@ -482,10 +771,10 @@ fn order(o: opts.Opts, ev: List[ent.Ent]) -> List[int] {
         (mut tmp).push(0)
         i += 1
     }
-    if n < 2 {
+    if n < 2 || o.sort == opts.sort_none() {
         return a
     }
-    let plain = o.sort == opts.sort_name() && !o.dirsfirst
+    let plain = o.sort == opts.sort_name() && !o.dirsfirst && !o.filesfirst
     var keys = List[int]()
     if plain {
         i = 0
@@ -583,21 +872,142 @@ fn later(x: List[byte], y: List[byte], d: int) -> bool {
     nx > ny
 }
 
-/// Whether to descend into `e` at `depth` (`src/traverse.c:646`; v1: a
-/// real directory above the `-L` limit).
-fn descends(o: opts.Opts, e: ent.Ent, depth: int) -> bool {
-    if e.kind != ent.dir() {
-        return false
+// ---- descent (`src/traverse.c:646`) ----
+
+/// Whether to descend into `e` at `depth`; if not, why: "recursive, not
+/// followed" for a followed symlink whose target was already seen, and
+/// whether the `-L` limit alone stopped it (`-R`'s boundary).
+fn decide(mut w: Walk, o: opts.Opts, e: ent.Ent, depth: int) -> (bool, str, bool) {
+    let dl = e.kind == ent.dir() || o.follow && e.kind == ent.lnk() && e.ltype == ent.dir()
+    if !dl {
+        return (false, "", false)
     }
-    !(o.level >= 0 && depth >= o.level)
+    var descend = true
+    var post = ""
+    // tree records every directory before any other check (saveino), so
+    // a directory halted at the -L boundary still blocks a later link to
+    // it (audit A2)
+    if o.follow {
+        let k = ident(e.ino, e.dev)
+        if w.seen[k] else false {
+            if e.kind == ent.lnk() {
+                post = "recursive, not followed"
+                descend = false
+            }
+        } else {
+            w.seen[k] = true
+        }
+    }
+    if o.xdev && e.kind == ent.dir() && e.dev != w.root_dev {
+        return (false, post, false)
+    }
+    if o.level >= 0 && depth >= o.level {
+        return (false, "", true)
+    }
+    (descend, post, false)
 }
 
-/// The streaming walk (`src/traverse.c:691`).
+// ---- the per-directory filter stacks ----
+
+fn push_dir(mut w: Walk, o: opts.Opts, path: str) -> (bool, bool) {
+    var g = false
+    if o.gitignore {
+        let (ok, ig) = gitignore.load_dir(path)
+        if ok {
+            (mut w.igs).push(ig)
+            g = true
+        }
+    }
+    var f = false
+    if o.showinfo {
+        let (ok, inf) = infofile.load_dir(path)
+        if ok {
+            (mut w.infs).push(inf)
+            f = true
+        }
+        w.info_top = ok
+    } else {
+        w.info_top = false
+    }
+    (g, f)
+}
+
+fn pop_dir(mut w: Walk, g: bool, f: bool) {
+    if f {
+        let _ = (mut w.infs).pop() else infofile.empty()
+    }
+    if g {
+        let _ = (mut w.igs).pop() else gitignore.empty()
+    }
+}
+
+// ---- the line renderers (`struct line_renderer`) ----
+
+fn l_root(mut w: Walk, o: opts.Opts, path: str, err: str, st: ent.Meta, has: bool) {
+    if w.fmt == opts.out_html() {
+        html.root(mut w.h, o, path, err, st, has)
+    } else {
+        text.root(mut w.t, o, path, err, st, has)
+    }
+}
+
+fn l_entry(mut w: Walk, o: opts.Opts, e: ent.Ent, path: str, depth: int, is_last: bool, rd: int) {
+    if w.fmt == opts.out_html() {
+        html.entry(mut w.h, o, w.a, e, path, depth, is_last, rd)
+    } else if e.lnk >= 0 {
+        text.entry(mut w.t, o, w.a, e, w.a.lnks[e.lnk], path, depth, is_last)
+    } else {
+        text.entry(mut w.t, o, w.a, e, w.none, path, depth, is_last)
+    }
+}
+
+fn l_error(mut w: Walk, msg: str) {
+    if w.fmt == opts.out_html() {
+        html.error(mut w.h, msg)
+    } else {
+        text.error(mut w.t, msg)
+    }
+}
+
+fn l_newline(mut w: Walk) {
+    if w.fmt == opts.out_html() {
+        html.newline(mut w.h)
+    } else {
+        text.newline(mut w.t)
+    }
+}
+
+fn l_comment(mut w: Walk, o: opts.Opts, e: ent.Ent, depth: int) {
+    if e.info < 0 || w.fmt == opts.out_html() {
+        return
+    }
+    text.comment(mut w.t, w.a.infos[e.info], depth)
+}
+
+/// `-R`: re-render `path`'s subtree into `path/00Tree.html` in the same
+/// line format (`src/render/unix.c:388`, `src/render/html.c:330`); false
+/// when the file cannot be created (an I/O error: status 2, D1).
+fn rerun(w: Walk, o: opts.Opts, path: str) -> bool {
+    let fd = fs_create("{path}/00Tree.html") else |_| {
+        return false
+    }
+    var sub = make(o, fd, w.env)
+    let roots = [path]
+    let _ = run(mut sub, o, roots)
+    fs_close(fd) else |_| {}
+    true
+}
+
+// ---- the streaming walk (`src/traverse.c:691`) ----
+
 fn walk_dir(mut w: Walk, o: opts.Opts, path: str, take rows: List[List[byte]], depth: int) {
+    let (g, f) = push_dir(mut w, o, path)
     let ev = read_level(mut w, o, path, take rows, false)
     let ord = order(o, ev)
     let n = ord.len
-    text.begin_level(mut w.t, depth)
+    text.begin_level(mut w.t, o, depth)
+    let need_path = o.fullpath || w.env.debug || w.fmt == opts.out_html() || o.hyperlink || o.rerun
+    var htmldescend = 0
     var i = 0
     while i < n {
         let k = ord[i]
@@ -607,13 +1017,15 @@ fn walk_dir(mut w: Walk, o: opts.Opts, path: str, take rows: List[List[byte]], d
         } else {
             w.files += 1
         }
-        let descend = descends(o, ev[k], depth)
-        let cp = if descend || o.fullpath || w.t.debug then join(path, ev[k].nm) else ""
-        if ev[k].lnk >= 0 {
-            text.entry(mut w.t, o, ev[k], w.lnks[ev[k].lnk], cp, depth, is_last)
-        } else {
-            text.entry(mut w.t, o, ev[k], w.none, cp, depth, is_last)
+        let (descend, post, boundary) = decide(mut w, o, ev[k], depth)
+        let cp = if descend || need_path then join(path, ev[k].nm) else ""
+        if boundary && o.rerun {
+            if !rerun(w, o, cp) {
+                w.errors += 1
+            }
+            htmldescend = 10
         }
+        l_entry(mut w, o, ev[k], cp, depth, is_last, (if descend then 1 else 0) + htmldescend)
         if descend {
             var opened = true
             let sub = fs_read_dir_entries(cp) else |_| {
@@ -621,22 +1033,39 @@ fn walk_dir(mut w: Walk, o: opts.Opts, path: str, take rows: List[List[byte]], d
                 List[List[byte]]()
             }
             if opened {
-                text.newline(mut w.t)
+                l_newline(mut w)
+                l_comment(mut w, o, ev[k], depth)
                 walk_dir(mut w, o, cp, take sub, depth + 1)
             } else {
-                text.error(mut w.t, "error opening dir")
-                text.newline(mut w.t)
+                l_error(mut w, "error opening dir")
+                l_newline(mut w)
+                l_comment(mut w, o, ev[k], depth)
                 w.errors += 1
             }
         } else {
-            text.newline(mut w.t)
+            if post.len > 0 {
+                l_error(mut w, post)
+            }
+            l_newline(mut w)
+            l_comment(mut w, o, ev[k], depth)
         }
         i += 1
     }
+    pop_dir(mut w, g, f)
+}
+
+// ---- the full tree ----
+
+/// The answer of `build_level`: the level's entry indices in display
+/// order, or (`limit`) the `--filelimit` message that stopped it.
+struct Built {
+    arr: List[int],
+    limit: str,
 }
 
 /// The whole subtree of an opened directory into the arena
-/// (`src/traverse.c:796`): its entries' indices, in display order.
+/// (`src/traverse.c:796`), sorted before the descent so that `-l`'s cycle
+/// set sees siblings in display order (D7).
 fn build_level(
     mut w: Walk,
     o: opts.Opts,
@@ -644,23 +1073,35 @@ fn build_level(
     take rows: List[List[byte]],
     depth: int,
     suppress: bool,
-) -> List[int] {
+) -> Built {
+    let (g, f) = push_dir(mut w, o, path)
     let ev = read_level(mut w, o, path, take rows, suppress)
     let ord = order(o, ev)
+    if o.filelimit > 0 && ev.len > o.filelimit {
+        // DEVIATION D1: a tripped filelimit is an error in every mode
+        w.errors += 1
+        pop_dir(mut w, g, f)
+        return Built {
+            arr: List[int](),
+            limit: "{ev.len} entries exceeds filelimit, not opening dir",
+        }
+    }
     var out = List[int]()
     for k in ord {
         var e = copy ev[k]
+        let dl = ent.dir_like(e)
         var child_suppress = suppress
         // --matchdirs: a directory whose name matches -P shows its
         // contents unfiltered and is kept by --prune
-        if o.matchdirs && o.patterns.len > 0 && ent.dir_like(e) {
+        if o.matchdirs && o.patterns.len > 0 && dl {
             let fb = path_bytes(path, e.nm)
             if glob.full(o.patterns, fb, fb.len - (e.nm.len - 1), true, o.ignorecase) {
                 e.flags = e.flags | ent.f_matched()
                 child_suppress = true
             }
         }
-        if descends(o, e, depth) {
+        let (descend, post, _) = decide(mut w, o, e, depth)
+        if descend {
             let cp = join(path, e.nm)
             var opened = true
             let sub = fs_read_dir_entries(cp) else |_| {
@@ -668,35 +1109,82 @@ fn build_level(
                 List[List[byte]]()
             }
             if opened {
-                let ch = build_level(mut w, o, cp, take sub, depth + 1, child_suppress)
-                e.child = w.kids.len
-                (mut w.kids).push(ch)
+                let b = build_level(mut w, o, cp, take sub, depth + 1, child_suppress)
+                if b.limit.len > 0 {
+                    e.err = b.limit
+                } else {
+                    e.child = w.a.kids.len
+                    (mut w.a.kids).push(b.arr)
+                }
             } else {
                 e.err = "error opening dir"
                 w.errors += 1
             }
+        } else if post.len > 0 {
+            e.err = post
+            e.flags = e.flags | ent.f_recursive()
         }
-        (mut w.ents).push(e)
-        (mut out).push(w.ents.len - 1)
+        (mut w.a.ents).push(e)
+        (mut out).push(w.a.ents.len - 1)
     }
-    out
+    pop_dir(mut w, g, f)
+    Built { arr: out, limit: "" }
 }
 
-/// `--prune`'s bottom-up pass (`src/traverse.c:940`): an empty directory
-/// is dropped unless `--matchdirs` matched its name.
-fn prune_level(mut w: Walk, arr: List[int]) -> List[int] {
+/// `--condense` on one entry (`src/traverse.c:911`): a directory whose
+/// only child is a directory absorbs it, the names joined with `/`,
+/// until the chain ends; under `--du` each absorbed directory's own size
+/// is folded in.
+fn condense_entry(mut w: Walk, o: opts.Opts, k: int) {
+    loop {
+        let c = w.a.ents[k].child
+        if c < 0 || w.a.kids[c].len != 1 {
+            break
+        }
+        let only = w.a.kids[c][0]
+        if !ent.dir_like(w.a.ents[only]) {
+            break
+        }
+        var joined = shown(w.a, w.a.ents[k])
+        (mut joined).push(47 as byte)
+        let tail = shown(w.a, w.a.ents[only])
+        var i = 1
+        while i < tail.len {
+            (mut joined).push(tail[i])
+            i += 1
+        }
+        w.a.ents[k].cname = w.a.cnames.len
+        (mut w.a.cnames).push(joined)
+        if o.duflag && w.a.ents[k].has_st && w.a.ents[only].has_st {
+            w.a.ents[k].st.size = w.a.ents[k].st.size + w.a.ents[only].st.size
+        }
+        w.a.ents[k].child = w.a.ents[only].child
+        w.a.ents[k].cond = w.a.ents[k].cond + 1 + w.a.ents[only].cond
+    }
+}
+
+/// `--condense` and `--prune`'s bottom-up pass (`src/traverse.c:946`),
+/// interleaved as tree does: a node's subtree first, then the node is
+/// condensed, then its parent drops it when it ended up empty.
+fn condense_prune(mut w: Walk, o: opts.Opts, arr: List[int], do_prune: bool) -> List[int] {
     var keep = List[int]()
     for k in arr {
-        let dl = ent.dir_like(w.ents[k])
-        let c = w.ents[k].child
+        let dl = ent.dir_like(w.a.ents[k])
+        let c = w.a.ents[k].child
         if dl && c >= 0 {
-            let kids = copy w.kids[c]
-            let kept = prune_level(mut w, kids)
-            w.kids[c] = kept
+            let kids = copy w.a.kids[c]
+            let kept = condense_prune(mut w, o, kids, do_prune)
+            w.a.kids[c] = kept
         }
-        let empty = dl && (c < 0 || w.kids[c].len == 0)
-        if empty && w.ents[k].flags & ent.f_matched() == 0 {
-            continue
+        if o.condense && w.a.ents[k].kind == ent.dir() {
+            condense_entry(mut w, o, k)
+        }
+        if do_prune {
+            let c2 = w.a.ents[k].child
+            let empty = dl && (c2 < 0 || w.a.kids[c2].len == 0)
+            if empty && w.a.ents[k].flags & ent.f_matched() == 0 {
+                continue
+            }
         }
         (mut keep).push(k)
     }
@@ -708,52 +1196,67 @@ fn prune_level(mut w: Walk, arr: List[int]) -> List[int] {
 fn du_level(mut w: Walk, arr: List[int]) -> int {
     var sum: int = 0
     for k in arr {
-        let dl = ent.dir_like(w.ents[k])
-        if dl && w.ents[k].child >= 0 && w.ents[k].has_st {
-            let kids = copy w.kids[w.ents[k].child]
+        let dl = ent.dir_like(w.a.ents[k])
+        if dl && w.a.ents[k].child >= 0 && w.a.ents[k].has_st {
+            let kids = copy w.a.kids[w.a.ents[k].child]
             let sub = du_level(mut w, kids)
-            w.ents[k].st.size = w.ents[k].st.size + sub
+            w.a.ents[k].st.size = w.a.ents[k].st.size + sub
         }
-        if w.ents[k].has_st {
-            sum += w.ents[k].st.size
+        if w.a.ents[k].has_st {
+            sum += w.a.ents[k].st.size
         }
     }
     sum
 }
 
-/// Emit a built level to the text renderer (`src/traverse.c:984`).
+/// Emit a built level to a line renderer (`src/traverse.c:984`).
 fn emit_level(mut w: Walk, o: opts.Opts, path: str, arr: List[int], depth: int) {
     let n = arr.len
-    text.begin_level(mut w.t, depth)
+    text.begin_level(mut w.t, o, depth)
+    var htmldescend = 0
     var i = 0
     while i < n {
         let k = arr[i]
         let is_last = i + 1 == n
-        if ent.dir_like(w.ents[k]) {
-            w.dirs += 1
+        let e = copy w.a.ents[k]
+        let dl = ent.dir_like(e)
+        if dl {
+            w.dirs += 1 + e.cond
         } else {
             w.files += 1
         }
-        let cp = join(path, w.ents[k].nm)
-        let e = copy w.ents[k]
-        if e.lnk >= 0 {
-            text.entry(mut w.t, o, e, w.lnks[e.lnk], cp, depth, is_last)
-        } else {
-            text.entry(mut w.t, o, e, w.none, cp, depth, is_last)
+        let cp = join_shown(path, w.a, e)
+        let rd = if e.child >= 0 then 1 else 0
+        if dl &&
+            e.child < 0 &&
+            e.err.len == 0 &&
+            o.rerun &&
+            o.level >= 0 &&
+            depth >= o.level &&
+            !(o.xdev && e.kind == ent.dir() && e.dev != w.root_dev) {
+            if !rerun(w, o, cp) {
+                w.errors += 1
+            }
+            htmldescend = 10
         }
+        l_entry(mut w, o, e, cp, depth, is_last, rd + htmldescend)
         if e.child >= 0 {
-            text.newline(mut w.t)
-            let kids = copy w.kids[e.child]
+            l_newline(mut w)
+            l_comment(mut w, o, e, depth)
+            let kids = copy w.a.kids[e.child]
             emit_level(mut w, o, cp, kids, depth + 1)
         } else {
             if e.err.len > 0 {
-                text.error(mut w.t, e.err)
+                l_error(mut w, e.err)
             }
-            text.newline(mut w.t)
+            l_newline(mut w)
+            l_comment(mut w, o, e, depth)
         }
         i += 1
     }
 }
+
+// ---- roots ----
 
 /// tree strips every trailing `/` from a root (one stays on `/`).
 fn strip_slashes(p: str) -> str {
@@ -766,18 +1269,54 @@ fn strip_slashes(p: str) -> str {
 
 fn root_meta(path: str) -> (bool, ent.Meta) {
     var ok = true
-    let w = fs_lstat(path) else |_| {
+    let m = fs_lstat(path) else |_| {
         ok = false
         List[int]()
     }
     if !ok {
         return (false, ent.no_meta())
     }
-    (true, ent.meta_of(w))
+    (true, ent.meta_of(m))
+}
+
+fn t_tree(
+    mut w: Walk,
+    o: opts.Opts,
+    root: str,
+    st: ent.Meta,
+    has: bool,
+    opened: bool,
+    limit: str,
+    top: List[int],
+    last: bool,
+) {
+    if w.fmt == opts.out_json() {
+        let (a, b) = json.tree(mut w.j, o, root, st, has, opened, limit, w.a, top, last)
+        w.dirs += a
+        w.files += b
+    } else {
+        let (a, b) = xml.tree(mut w.x, o, root, st, has, opened, limit, w.a, top, last)
+        w.dirs += a
+        w.files += b
+    }
+}
+
+/// The per-root state, fresh (`asp_walk`'s wctx).
+fn reset_root(mut w: Walk) {
+    w.a = ent.arena()
+    w.seen = Map[str, bool]()
+    w.root_dev = 0
+    w.igs = List[gitignore.Ignore]()
+    w.infs = List[infofile.Info]()
+    w.info_top = false
 }
 
 /// One root (`src/traverse.c:1242`).
 pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
+    if o.fromfile || o.fromtabfile {
+        root_fromfile(mut w, o, root, last_root)
+        return
+    }
     let dr = if o.fullpath then strip_slashes(root) else root
     let cpath = strip_slashes(root)
     var opened = true
@@ -790,20 +1329,15 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
         // "[error opening dir]" and counted as one file, status 0; one
         // that does not is an error, status 2 (`src/traverse.c:1268`)
         let (has, st) = root_meta(root)
-        if w.is_json {
-            json.failed_root(mut w.j, o, dr, st, has, last_root)
+        if is_tree_fmt(w) {
+            t_tree(mut w, o, dr, st, has, false, "", List[int](), last_root)
         } else {
-            text.root(mut w.t, o, dr, "error opening dir", st, has)
+            l_root(mut w, o, dr, "error opening dir", st, has)
         }
         if has {
-            if w.is_json {
-                w.j.files += 1
-            } else {
-                w.files += 1
-            }
+            w.files += 1
             // tree adds the root's own size to --du's total even when it
-            // cannot open it; C aspen does not (docs/MAP.md, "Where the
-            // port follows tree over C aspen")
+            // cannot open it; C aspen does not (docs/MAP.md §5)
             if o.duflag {
                 w.size += st.size
             }
@@ -812,32 +1346,93 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
         }
         return
     }
-    // the root's own line shows its lstat (`src/traverse.c:1342`); -J
-    // types the root by it too, metadata flags or none: tree calls a
-    // symlink to a directory "link" (C aspen says "directory" when no
-    // flag stat'ed it, `src/render/json.c:294`; docs/MAP.md)
+    reset_root(mut w)
+    if o.has_gitfile {
+        let (ok, ig) = gitignore.load_file(".", o.gitfile)
+        if ok {
+            (mut w.igs).push(ig)
+        }
+    }
+    if o.gitignore {
+        var have = true
+        let gd = env_get("GIT_DIR") else |_| {
+            have = false
+            ""
+        }
+        if have {
+            let (ok, ig) = gitignore.load_file(gd, "{gd}/info/exclude")
+            if ok {
+                (mut w.igs).push(ig)
+            }
+        }
+    }
+    if o.has_infofile {
+        let (ok, inf) = infofile.load_file(o.infofile)
+        if ok {
+            (mut w.infs).push(inf)
+        }
+    }
+    if o.showinfo {
+        let (ok, inf) = infofile.load_file("/usr/share/finfo/global_info")
+        if ok {
+            (mut w.infs).push(inf)
+        }
+    }
+    if o.xdev || o.follow {
+        var ok = true
+        let ws = fs_stat(root) else |_| {
+            ok = false
+            List[int]()
+        }
+        if ok {
+            w.root_dev = ws[9]
+            if o.follow {
+                w.seen[ident(ws[10], ws[9])] = true
+            }
+        }
+    }
+    // the root's own line shows its lstat (`src/traverse.c:1342`); -J and
+    // -X type the root by it too: tree calls a symlink to a directory
+    // "link" (C aspen says "directory" when no flag stat'ed it,
+    // `src/render/json.c:294`; docs/MAP.md §5)
     var has_st = false
     var st = ent.no_meta()
-    var rkind = ent.dir()
-    if o.sizeflag || o.permflag || o.dateflag || o.duflag || o.classify || w.is_json {
+    let rstat = root_needs_stat(o)
+    if rstat || is_tree_fmt(w) {
         let (h, s) = root_meta(root)
+        has_st = h && rstat
         if h {
-            rkind = s.kind
+            let kind = s.kind
+            st = s
+            if !rstat {
+                st = ent.no_meta()
+                st.kind = kind
+            }
         }
-        has_st = h && (o.sizeflag || o.permflag || o.dateflag || o.duflag || o.classify)
-        st = s
     }
-    if w.is_json || full_tree(o) {
-        var top = build_level(mut w, o, cpath, take rows, 1, false)
-        if o.prune && !o.dirsonly {
-            let kept = prune_level(mut w, top)
+    if is_tree_fmt(w) || full_tree(o) {
+        let b = build_level(mut w, o, cpath, take rows, 1, false)
+        if b.limit.len > 0 {
+            // SR-2.12: the root itself over --filelimit, one directory
+            if is_tree_fmt(w) {
+                t_tree(mut w, o, dr, st, has_st, true, b.limit, List[int](), last_root)
+            } else {
+                l_root(mut w, o, dr, b.limit, st, has_st)
+                w.dirs += 1
+            }
+            return
+        }
+        var top = b.arr
+        let do_prune = o.prune && !o.dirsonly
+        if o.condense || do_prune {
+            let kept = condense_prune(mut w, o, top, do_prune)
             top = kept
         }
         if o.duflag {
             let dusum = du_level(mut w, top)
             // tree sums every root's total; C aspen SETS it per root, so
             // several roots report only the last one's (`src/traverse.c:1378`;
-            // docs/MAP.md)
+            // docs/MAP.md §5)
             if has_st {
                 st.size = st.size + dusum
                 w.size += st.size
@@ -845,33 +1440,154 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
                 w.size += dusum
             }
         }
-        if w.is_json {
-            json.tree(mut w.j, o, dr, rkind, st, has_st, w.ents, w.kids, w.lnks, top, last_root)
+        if is_tree_fmt(w) {
+            t_tree(mut w, o, dr, st, has_st, true, "", top, last_root)
         } else {
-            text.root(mut w.t, o, dr, "", st, has_st)
+            l_root(mut w, o, dr, "", st, has_st)
             if top.len > 0 {
                 w.dirs += 1
             }
             emit_level(mut w, o, cpath, top, 1)
         }
-        w.ents = List[ent.Ent]()
-        w.kids = List[List[int]]()
-        w.lnks = List[List[byte]]()
         return
     }
     let before = w.dirs + w.files
-    text.root(mut w.t, o, dr, "", st, has_st)
+    l_root(mut w, o, dr, "", st, has_st)
     walk_dir(mut w, o, cpath, take rows, 1)
     if w.dirs + w.files > before {
         w.dirs += 1
     }
 }
 
+// ---- --fromfile (`src/traverse.c:1057`) ----
+
+/// A level of the input's nodes into entries, with the listing's filters
+/// (`synth_level`): `-a`, `-d`, and `-P`/`-I` on the name alone; a
+/// directory whose name matches `-P` shows its subtree unfiltered and is
+/// kept by `--prune` (tree's fromfile quirk, not gated on `--matchdirs`).
+/// Entries carry only their type (`newent()`). The level comes back in
+/// display order (the C sorts it as it emits, `src/traverse.c:990`).
+fn synth_level(
+    mut w: Walk,
+    o: opts.Opts,
+    t: fromfile.Tree,
+    list: List[int],
+    suppress: bool,
+) -> List[int] {
+    let need = want_st(o)
+    var out = List[int]()
+    var ev = List[ent.Ent]()
+    for id in list {
+        let isdir = t.nodes[id].isdir
+        let islink = t.nodes[id].islink
+        let kind = if islink then ent.lnk() else if isdir then ent.dir() else ent.reg()
+        let nm = copy t.nodes[id].name
+        if !o.all && nm.len > 0 && nm[0] as int == 46 {
+            continue
+        }
+        if o.dirsonly && !isdir {
+            continue
+        }
+        var matched = false
+        let row = row_of(nm)
+        if !suppress {
+            if o.patterns.len > 0 {
+                let any = glob.any(o.patterns, row, 1, row.len, isdir, o.ignorecase)
+                if !isdir {
+                    if !any {
+                        continue
+                    }
+                } else if any {
+                    matched = true
+                }
+            }
+            if o.ipatterns.len > 0 && glob.any(o.ipatterns, row, 1, row.len, isdir, o.ignorecase) {
+                continue
+            }
+        }
+        var e = ent.new_ent(take row, kind)
+        if matched {
+            e.flags = e.flags | ent.f_matched()
+        }
+        if islink {
+            e.lnk = w.a.lnks.len
+            (mut w.a.lnks).push(copy t.nodes[id].lnk)
+        }
+        if need {
+            var m = ent.no_meta()
+            m.kind = kind
+            e.st = m
+            e.has_st = true
+        }
+        if isdir && t.nodes[id].kids.len > 0 {
+            let ch = synth_level(mut w, o, t, t.nodes[id].kids, suppress || matched)
+            if ch.len > 0 {
+                e.child = w.a.kids.len
+                (mut w.a.kids).push(ch)
+            }
+        }
+        (mut ev).push(copy e)
+        (mut w.a.ents).push(e)
+        (mut out).push(w.a.ents.len - 1)
+    }
+    let ord = order(o, ev)
+    var sorted = List[int]()
+    for i in ord {
+        (mut sorted).push(out[i])
+    }
+    sorted
+}
+
+fn root_fromfile(mut w: Walk, o: opts.Opts, arg: str, last_root: bool) {
+    // the root's metadata is the input file's own lstat, its size shown 0
+    let (has, st0) = root_meta(arg)
+    var st = st0
+    st.size = 0
+    let dr = if o.fullpath then strip_slashes(arg) else arg
+    let (_, t) = fromfile.read(arg, o.fromtabfile, o.fflinks)
+    for e in t.errs {
+        eprint_raw(e)
+    }
+    if !has {
+        if is_tree_fmt(w) {
+            t_tree(mut w, o, dr, st, false, false, "", List[int](), last_root)
+        } else {
+            l_root(mut w, o, dr, "error opening dir", st, false)
+        }
+        w.errors += 1
+        return
+    }
+    reset_root(mut w)
+    var top = synth_level(mut w, o, t, t.nodes[0].kids, false)
+    let do_prune = o.prune && !o.dirsonly
+    if o.condense || do_prune {
+        let kept = condense_prune(mut w, o, top, do_prune)
+        top = kept
+    }
+    if o.duflag {
+        // tree: the root's size is the aggregate alone
+        let dusum = du_level(mut w, top)
+        st.size = dusum
+        w.size += dusum
+    }
+    if is_tree_fmt(w) {
+        t_tree(mut w, o, dr, st, true, true, "", top, last_root)
+    } else {
+        l_root(mut w, o, dr, "", st, true)
+        w.dirs += 1
+        emit_level(mut w, o, dr, top, 1)
+    }
+}
+
 /// Every root, the report, the end (`src/render.c:4`); the exit status:
 /// 2 when any open or stat failed, else 0.
 pub fn run(mut w: Walk, o: opts.Opts, roots: List[str]) -> int {
-    if w.is_json {
-        json.begin(mut w.j)
+    if w.fmt == opts.out_json() {
+        json.begin(mut w.j, o)
+    } else if w.fmt == opts.out_xml() {
+        xml.begin(mut w.x, o)
+    } else if w.fmt == opts.out_html() {
+        html.begin(mut w.h, o)
     }
     let n = roots.len
     var i = 0
@@ -880,14 +1596,22 @@ pub fn run(mut w: Walk, o: opts.Opts, roots: List[str]) -> int {
         i += 1
     }
     if !o.noreport {
-        if w.is_json {
-            json.report(mut w.j, o, w.size)
+        if w.fmt == opts.out_json() {
+            json.report(mut w.j, o, w.dirs, w.files, w.size)
+        } else if w.fmt == opts.out_xml() {
+            xml.report(mut w.x, o, w.dirs, w.files, w.size)
+        } else if w.fmt == opts.out_html() {
+            html.report(mut w.h, o, w.dirs, w.files, w.size)
         } else {
             text.report(mut w.t, o, w.dirs, w.files, w.size)
         }
     }
-    if w.is_json {
-        json.end(mut w.j)
+    if w.fmt == opts.out_json() {
+        json.end(mut w.j, o)
+    } else if w.fmt == opts.out_xml() {
+        xml.end(mut w.x, o)
+    } else if w.fmt == opts.out_html() {
+        html.end(mut w.h, o)
     } else {
         text.finish(mut w.t)
     }
