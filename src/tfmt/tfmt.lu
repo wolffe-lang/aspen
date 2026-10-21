@@ -6,11 +6,18 @@
 //! (no effect in the C locale). A conversion it does not know is copied
 //! as written, from its `%` on.
 //!
-//! The result is capped where the C's is: `strftime` with room for 255
-//! bytes writes nothing more once the next piece would leave no room for
-//! the terminator, so the text stops at the last whole piece that fits
-//! in 254 bytes (tree shows 254 `Z`s for a 300-`Z` format, measured in
-//! the oracle's container).
+//! The result is capped where the C's is: glibc's `strftime` with room
+//! for 255 bytes writes nothing more once the next piece would leave no
+//! room for the terminator, so the text stops at the last whole piece
+//! that fits in 254 bytes (tree shows 254 `Z`s for a 300-`Z` format,
+//! measured in the oracle's container).
+//!
+//! macOS's C library (the BSD `strftime`, measured through its own
+//! `strftime` by `ctypes` on nomad-1) is another dialect, and tree there
+//! prints what it answers (`bsd`): the flags are `-`, `_` and `0` alone,
+//! no width; a character that is no conversion prints as itself (`%q` is
+//! `q`); `%P` is none, `%+` and `%v` are; and the text runs to all 255
+//! bytes, the last piece cut where the room ends.
 
 use clock
 
@@ -35,16 +42,28 @@ fn months_full() -> List[str] {
     ]
 }
 
-/// The bytes written so far and whether the cap was reached.
+/// The bytes written so far, whether the cap was reached, the dialect.
 struct Buf {
     b: List[byte],
     full: bool,
+    bsd: bool,
 }
 
-/// Add `piece` whole, or mark the buffer full (`maxsize` 255: at most 254
-/// bytes and the terminator).
+/// Add `piece` whole, or mark the buffer full (glibc: `maxsize` 255, at
+/// most 254 bytes and the terminator); BSD writes byte by byte to all
+/// 255.
 fn add(mut w: Buf, piece: List[byte]) {
     if w.full {
+        return
+    }
+    if w.bsd {
+        for x in piece {
+            if w.b.len >= 255 {
+                w.full = true
+                return
+            }
+            (mut w.b).push(x)
+        }
         return
     }
     if w.b.len + piece.len >= 255 {
@@ -95,7 +114,13 @@ fn number(v: int, defw: int, defpad: int, flag: int, width: int) -> List[byte] {
     }
     var w = if width >= 0 then width else defw
     if flag == 45 {
-        w = 0
+        // `-`: no padding, but an explicit width still pads with spaces
+        // (glibc, measured: `%-6d` is five spaces and the digit)
+        if width >= 0 {
+            pad = 32
+        } else {
+            w = 0
+        }
     }
     if neg {
         // the sign goes before zeros, after spaces
@@ -162,10 +187,89 @@ fn iso_week(tm: clock.Tm) -> (int, int) {
 }
 
 /// Format `tm` by `fmt` as `strftime` does in the C locale.
-pub fn format(fmt: str, tm: clock.Tm) -> List[byte] {
-    var w = Buf { b: List[byte](), full: false }
-    put(mut w, fmt, tm)
+pub fn format(fmt: str, tm: clock.Tm, bsd: bool) -> List[byte] {
+    var w = Buf { b: List[byte](), full: false, bsd: bsd }
+    if bsd {
+        put_bsd(mut w, fmt, tm)
+    } else {
+        put(mut w, fmt, tm)
+    }
     w.b
+}
+
+fn one(c: int) -> List[byte] {
+    var r = List[byte]()
+    (mut r).push(c as byte)
+    r
+}
+
+/// The BSD dialect's walk of the format (the module header).
+fn put_bsd(mut w: Buf, fmt: str, tm: clock.Tm) {
+    let f = fmt.bytes()
+    let n = fmt.len
+    var i = 0
+    while i < n && !w.full {
+        let c = f[i] as int
+        if c != 37 {
+            add(mut w, one(c))
+            i += 1
+            continue
+        }
+        i += 1
+        var flag = 0
+        var last = 37
+        while i < n && (f[i] as int == 45 || f[i] as int == 95 || f[i] as int == 48) {
+            flag = f[i] as int
+            last = flag
+            i += 1
+        }
+        if i < n && (f[i] as int == 69 || f[i] as int == 79) {
+            last = f[i] as int
+            i += 1
+        }
+        if i >= n {
+            // nothing after: the last character read prints as itself
+            add(mut w, one(last))
+            break
+        }
+        let conv = f[i] as int
+        i += 1
+        if conv == 43 {
+            put_bsd(mut w, "%a %b %e %H:%M:%S %Z %Y", tm)
+            continue
+        }
+        if conv == 118 {
+            put_bsd(mut w, "%e-%b-%Y", tm)
+            continue
+        }
+        if conv == 80 {
+            add(mut w, one(conv))
+            continue
+        }
+        // the pad flags reach the two-digit fields and %j alone (measured)
+        let padded_field = conv == 100 ||
+            conv == 101 ||
+            conv == 72 ||
+            conv == 73 ||
+            conv == 106 ||
+            conv == 107 ||
+            conv == 108 ||
+            conv == 109 ||
+            conv == 77 ||
+            conv == 83 ||
+            conv == 85 ||
+            conv == 86 ||
+            conv == 87
+        let piece = conversion(conv, tm, if padded_field then flag else 0, false, -1)
+        if piece.len == 1 && piece[0] as int == 0 {
+            // no conversion: the character itself
+            add(mut w, one(conv))
+        } else if piece.len == 1 && piece[0] as int == 1 {
+            put_bsd(mut w, composite(conv), tm)
+        } else {
+            add(mut w, piece)
+        }
+    }
 }
 
 fn put(mut w: Buf, fmt: str, tm: clock.Tm) {

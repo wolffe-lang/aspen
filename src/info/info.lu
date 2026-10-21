@@ -302,7 +302,7 @@ fn two(n: int) -> str {
 /// sets only LC_CTYPE and LC_COLLATE, `src/main.c:89`).
 pub fn date_bytes(o: opts.Opts, c: Cols, t: int) -> List[byte] {
     if o.has_timefmt {
-        return tfmt.format(o.timefmt, clock.tm_of(c.zone, t))
+        return tfmt.format(o.timefmt, clock.tm_of(c.zone, t), c.macos)
     }
     var r = List[byte]()
     for x in date(c.zone, c.now, t).bytes() {
