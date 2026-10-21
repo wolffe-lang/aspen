@@ -1,0 +1,63 @@
+//! member: false
+//!
+//! aspen — `tree(1)` in wolf: a port of tenseleyFlow/aspen (MIT, the
+//! maintainer's), itself written with tree 2.3.2 (GPL-2.0-or-later) as
+//! reference; this repository GPL-3.0-or-later (ruling #103). The entry
+//! point (C aspen `src/main.c`): parse tree's command line, open `-o
+//! FILE`, pick the renderer, walk every root.
+
+use clock
+use json
+use lines
+use locale
+use opts
+use out
+use std.time
+use text
+use walk
+
+fn main() -> int {
+    let p = opts.parse(env_args())
+    if p.stop >= 0 {
+        var so = out.to_fd(1)
+        out.s(mut so, p.out)
+        out.flush(mut so)
+        var se = out.to_fd(2)
+        out.s(mut se, p.err)
+        out.flush(mut se)
+        return p.stop
+    }
+    var roots = copy p.roots
+    if roots.len == 0 {
+        (mut roots).push(".")
+    }
+    // -o FILE: the output to a file, diagnostics still on stderr; tree's
+    // wording and status 1 when it cannot be opened (`src/main.c:125`)
+    var fd = 1
+    if p.o.has_outfile {
+        var ok = true
+        let f = fs_create(p.o.outfile) else |_| {
+            ok = false
+            0
+        }
+        if !ok {
+            var se = out.to_fd(2)
+            out.s(mut se, "aspen: invalid filename '{p.o.outfile}'\n")
+            out.flush(mut se)
+            return 1
+        }
+        fd = f
+    }
+    let utf8 = locale.utf8_ctype()
+    let ln = lines.pick(p.o.ansilines, utf8)
+    let zone = if p.o.dateflag then clock.local() else clock.utc()
+    let now = time.unix_ms() / 1000
+    let t = text.new(fd, utf8, take ln, take copy zone, now)
+    let j = json.new(fd, take zone, now)
+    var w = walk.new(p.o.json, utf8, take t, take j)
+    let status = walk.run(mut w, p.o, roots)
+    if fd != 1 {
+        fs_close(fd) else |_| {}
+    }
+    status
+}
