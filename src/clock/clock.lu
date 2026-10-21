@@ -20,6 +20,8 @@
 /// the two yearly changes (each a kind, three numbers and a local time).
 pub struct Rule {
     // POSIX TZ: offsets are seconds EAST of UTC (POSIX spells west)
+    std_name: str,
+    dst_name: str,
     std_off: int,
     has_dst: bool,
     dst_off: int,
@@ -38,12 +40,15 @@ pub struct Rule {
 }
 
 /// A zone: TZif transitions (UTC instants, the type index each starts,
-/// the types' offsets east of UTC), the offset before the first, and the
-/// POSIX rule for times past the last (or for a TZ string alone).
+/// the types' offsets east of UTC, their DST flags and abbreviations),
+/// the offset before the first, and the POSIX rule for times past the
+/// last (or for a TZ string alone).
 pub struct Zone {
     times: List[int],
     idx: List[int],
     offs: List[int],
+    dsts: List[bool],
+    abbrs: List[str],
     first: int,
     has_rule: bool,
     rule: Rule,
@@ -51,6 +56,8 @@ pub struct Zone {
 
 fn utc_rule() -> Rule {
     Rule {
+        std_name: "UTC",
+        dst_name: "",
         std_off: 0,
         has_dst: false,
         dst_off: 0,
@@ -73,6 +80,8 @@ pub fn utc() -> Zone {
         times: List[int](),
         idx: List[int](),
         offs: List[int](),
+        dsts: List[bool](),
+        abbrs: List[str](),
         first: 0,
         has_rule: true,
         rule: utc_rule(),
@@ -224,24 +233,28 @@ fn peek(c: Cur) -> int {
     c.s.bytes()[c.i] as int
 }
 
-fn skip_name(mut c: Cur) -> bool {
+/// A zone name, `EST` or the quoted `<+05>`; "" when there is none (a
+/// name is three letters or more).
+fn take_name(mut c: Cur) -> (bool, str) {
     if peek(c) == 60 {
         // <+05>: quoted
         c.i += 1
+        let start = c.i
         while peek(c) >= 0 && peek(c) != 62 {
             c.i += 1
         }
         if peek(c) != 62 {
-            return false
+            return (false, "")
         }
+        let nm = c.s[start..c.i]
         c.i += 1
-        return true
+        return (true, nm)
     }
     let start = c.i
     while peek(c) >= 65 && peek(c) <= 90 || peek(c) >= 97 && peek(c) <= 122 {
         c.i += 1
     }
-    c.i - start >= 3
+    (c.i - start >= 3, c.s[start..c.i])
 }
 
 fn num(mut c: Cur) -> int {
@@ -334,9 +347,11 @@ fn change(mut c: Cur) -> (int, int, int, int, int) {
 pub fn posix_rule(s: str) -> (bool, Rule) {
     var c = Cur { s: s, i: 0 }
     var r = utc_rule()
-    if !skip_name(mut c) {
+    let (ok1, n1) = take_name(mut c)
+    if !ok1 {
         return (false, r)
     }
+    r.std_name = n1
     let so = hms(mut c)
     if so == -1000000 {
         return (false, r)
@@ -345,9 +360,11 @@ pub fn posix_rule(s: str) -> (bool, Rule) {
     if peek(c) < 0 {
         return (true, r)
     }
-    if !skip_name(mut c) {
+    let (ok2, n2) = take_name(mut c)
+    if !ok2 {
         return (false, r)
     }
+    r.dst_name = n2
     r.has_dst = true
     r.dst_off = r.std_off + 3600
     if peek(c) >= 0 && peek(c) != 44 {
@@ -481,10 +498,22 @@ pub fn tzif(b: List[byte]) -> (bool, Zone) {
     p += timecnt
     var offs = List[int]()
     var dst = List[bool]()
+    var abbrs = List[str]()
+    let chars = p + typecnt * 6
     k = 0
     while k < typecnt {
         (mut offs).push(be(b, p + k * 6, 4))
         (mut dst).push(b[p + k * 6 + 4] as int != 0)
+        // the abbreviation: NUL-terminated, at its index in the chars
+        var a0 = chars + b[p + k * 6 + 5] as int
+        var a1 = a0
+        while a1 < chars + charcnt && b[a1] as int != 0 {
+            a1 += 1
+        }
+        if a0 > a1 {
+            a0 = a1
+        }
+        (mut abbrs).push(str_from_utf8(b[a0..a1]) else "")
         k += 1
     }
     p += typecnt * 6 + charcnt + leap * (tsize + 4) + isstd + isut
@@ -492,6 +521,8 @@ pub fn tzif(b: List[byte]) -> (bool, Zone) {
     z.times = times
     z.idx = idx
     z.offs = offs
+    z.dsts = dst
+    z.abbrs = abbrs
     z.has_rule = false
     if tsize == 8 && p < b.len && b[p] as int == 10 {
         var e = p + 1
@@ -550,6 +581,80 @@ pub fn local() -> Zone {
         return z
     }
     utc()
+}
+
+/// The offset, DST flag and abbreviation in force at `t` (glibc's
+/// `localtime`'s `tm_gmtoff`, `tm_isdst`, `tm_zone`).
+pub fn zone_at(z: Zone, t: int) -> (int, bool, str) {
+    let n = z.times.len
+    if n == 0 || t >= z.times[n - 1] && z.has_rule {
+        if z.has_rule {
+            let off = rule_offset(z.rule, t)
+            let d = z.rule.has_dst && off == z.rule.dst_off && off != z.rule.std_off
+            return (off, d, if d then z.rule.dst_name else z.rule.std_name)
+        }
+    }
+    if n == 0 || t < z.times[0] {
+        // before the first transition: time type 0 (RFC 8536 §3.2), the
+        // offset `offset` answers there too
+        if z.offs.len > 0 {
+            return (z.offs[0], z.dsts[0], z.abbrs[0])
+        }
+        return (z.first, false, "UTC")
+    }
+    var lo = 0
+    var hi = n - 1
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2
+        if z.times[mid] <= t {
+            lo = mid
+        } else {
+            hi = mid - 1
+        }
+    }
+    let ty = z.idx[lo]
+    (z.offs[ty], z.dsts[ty], z.abbrs[ty])
+}
+
+/// A broken-down local time (C's `struct tm`, with `tm_gmtoff` and
+/// `tm_zone`): the year in full, the month 1..12, the weekday 0 Sunday,
+/// the day of the year 0..365.
+pub struct Tm {
+    year: int,
+    mon: int,
+    mday: int,
+    hour: int,
+    min: int,
+    sec: int,
+    wday: int,
+    yday: int,
+    isdst: bool,
+    gmtoff: int,
+    zone: str,
+    epoch: int,
+}
+
+/// `localtime` of epoch second `t` in zone `z`.
+pub fn tm_of(z: Zone, t: int) -> Tm {
+    let (off, d, ab) = zone_at(z, t)
+    let lt = t + off
+    let day = floordiv(lt, 86400)
+    let secs = lt - day * 86400
+    let (y, m, dd) = civil(day)
+    Tm {
+        year: y,
+        mon: m,
+        mday: dd,
+        hour: secs / 3600,
+        min: secs / 60 % 60,
+        sec: secs % 60,
+        wday: weekday(day),
+        yday: day - days(y, 1, 1),
+        isdst: d,
+        gmtoff: off,
+        zone: ab,
+        epoch: t,
+    }
 }
 
 /// Local (year, month, day, hour, minute) of epoch second `t`.
