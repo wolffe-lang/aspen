@@ -1,0 +1,562 @@
+//! clock — local civil time for `-D`, which C aspen gets from libc
+//! (`localtime_r` + `strftime`, `src/render/fileinfo.c:52`). wolf-std has
+//! no `localtime`, so the zone is read here the way the C library reads
+//! it:
+//!
+//! - `TZ` unset: the zone file `/etc/localtime`; none there is UTC.
+//! - `TZ` empty, or naming nothing loadable and not a POSIX rule: UTC.
+//! - `TZ` = `:file`, an absolute path, or a name under
+//!   `/usr/share/zoneinfo`: that zone file (RFC 8536 TZif, version 1 to 4;
+//!   the 64-bit table when the file has one, and its footer's POSIX rule
+//!   past the last transition).
+//! - otherwise `TZ` is a POSIX rule (`EST5EDT,M3.2.0,M11.1.0`).
+//!
+//! Leap-second tables (the `right/` zones) are not applied: tree's
+//! listing times come from `st_mtime`, which POSIX time never counts
+//! leap seconds in, and every zone file on the hosts aspen runs on
+//! (kasumi, CI, PAX) is a `posix/` one.
+
+/// A POSIX TZ rule: the standard offset and, with DST, its offset and
+/// the two yearly changes (each a kind, three numbers and a local time).
+pub struct Rule {
+    // POSIX TZ: offsets are seconds EAST of UTC (POSIX spells west)
+    std_off: int,
+    has_dst: bool,
+    dst_off: int,
+    // each change: kind 0 = Mm.w.d, 1 = Jn (1..365, no leap day),
+    // 2 = n (0..365, leap day counted); seconds after local midnight
+    s_kind: int,
+    s_m: int,
+    s_w: int,
+    s_d: int,
+    s_time: int,
+    e_kind: int,
+    e_m: int,
+    e_w: int,
+    e_d: int,
+    e_time: int,
+}
+
+/// A zone: TZif transitions (UTC instants, the type index each starts,
+/// the types' offsets east of UTC), the offset before the first, and the
+/// POSIX rule for times past the last (or for a TZ string alone).
+pub struct Zone {
+    times: List[int],
+    idx: List[int],
+    offs: List[int],
+    first: int,
+    has_rule: bool,
+    rule: Rule,
+}
+
+fn utc_rule() -> Rule {
+    Rule {
+        std_off: 0,
+        has_dst: false,
+        dst_off: 0,
+        s_kind: 0,
+        s_m: 0,
+        s_w: 0,
+        s_d: 0,
+        s_time: 0,
+        e_kind: 0,
+        e_m: 0,
+        e_w: 0,
+        e_d: 0,
+        e_time: 0,
+    }
+}
+
+/// The zone with no offset, ever.
+pub fn utc() -> Zone {
+    Zone {
+        times: List[int](),
+        idx: List[int](),
+        offs: List[int](),
+        first: 0,
+        has_rule: true,
+        rule: utc_rule(),
+    }
+}
+
+// ---- civil arithmetic (days from 1970-01-01, proleptic Gregorian) ----
+
+/// (year, month 1..12, day 1..31) of day `z` (Howard Hinnant's
+/// `civil_from_days`).
+pub fn civil(z0: int) -> (int, int, int) {
+    let z = z0 + 719468
+    let era = if z >= 0 then z / 146097 else (z - 146096) / 146097
+    let doe = z - era * 146097
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    let y = yoe + era * 400
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    let mp = (5 * doy + 2) / 153
+    let d = doy - (153 * mp + 2) / 5 + 1
+    let m = if mp < 10 then mp + 3 else mp - 9
+    let yy = if m <= 2 then y + 1 else y
+    (yy, m, d)
+}
+
+/// Day number of (year, month, day) (`days_from_civil`).
+pub fn days(y0: int, m: int, d: int) -> int {
+    let y = if m <= 2 then y0 - 1 else y0
+    let era = if y >= 0 then y / 400 else (y - 399) / 400
+    let yoe = y - era * 400
+    let mp = if m > 2 then m - 3 else m + 9
+    let doy = (153 * mp + 2) / 5 + d - 1
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    era * 146097 + doe - 719468
+}
+
+fn floordiv(a: int, b: int) -> int {
+    if a >= 0 {
+        return a / b
+    }
+    -((-a + b - 1) / b)
+}
+
+fn is_leap(y: int) -> bool {
+    y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
+}
+
+/// Weekday of day `z`, 0 = Sunday (1970-01-01 was a Thursday).
+fn weekday(z: int) -> int {
+    let w = (z + 4) % 7
+    if w < 0 then w + 7 else w
+}
+
+fn month_len(y: int, m: int) -> int {
+    if m == 2 {
+        return if is_leap(y) then 29 else 28
+    }
+    if m == 4 || m == 6 || m == 9 || m == 11 {
+        return 30
+    }
+    31
+}
+
+/// The UTC instant a change happens in year `y`, `off` the offset in
+/// force before it.
+fn change_at(y: int, kind: int, m: int, w: int, d: int, t: int, off: int) -> int {
+    var day = 0
+    if kind == 0 {
+        // Mm.w.d: day d (0 Sunday) of week w (5 = last) of month m
+        let first = days(y, m, 1)
+        let wd = weekday(first)
+        var dom = 1 + (d - wd + 7) % 7 + (w - 1) * 7
+        let ml = month_len(y, m)
+        while dom > ml {
+            dom -= 7
+        }
+        day = days(y, m, dom)
+    } else if kind == 1 {
+        // Jn: 1..365, February 29 never counted
+        var n = m
+        if is_leap(y) && n >= 60 {
+            n += 1
+        }
+        day = days(y, 1, 1) + n - 1
+    } else {
+        day = days(y, 1, 1) + m
+    }
+    day * 86400 + t - off
+}
+
+fn rule_offset(r: Rule, t: int) -> int {
+    if !r.has_dst {
+        return r.std_off
+    }
+    let (y, _, _) = civil(floordiv(t + r.std_off, 86400))
+    let start = change_at(y, r.s_kind, r.s_m, r.s_w, r.s_d, r.s_time, r.std_off)
+    let end = change_at(y, r.e_kind, r.e_m, r.e_w, r.e_d, r.e_time, r.dst_off)
+    if start < end {
+        if t >= start && t < end {
+            return r.dst_off
+        }
+        return r.std_off
+    }
+    // southern hemisphere: DST spans the new year
+    if t >= end && t < start {
+        return r.std_off
+    }
+    r.dst_off
+}
+
+/// Seconds east of UTC in force at `t` in zone `z`.
+pub fn offset(z: Zone, t: int) -> int {
+    let n = z.times.len
+    if n == 0 {
+        if z.has_rule {
+            return rule_offset(z.rule, t)
+        }
+        return z.first
+    }
+    if t < z.times[0] {
+        return z.first
+    }
+    if t >= z.times[n - 1] && z.has_rule {
+        return rule_offset(z.rule, t)
+    }
+    var lo = 0
+    var hi = n - 1
+    while lo < hi {
+        let mid = (lo + hi + 1) / 2
+        if z.times[mid] <= t {
+            lo = mid
+        } else {
+            hi = mid - 1
+        }
+    }
+    z.offs[z.idx[lo]]
+}
+
+// ---- POSIX TZ strings ----
+
+struct Cur {
+    s: str,
+    i: int,
+}
+
+fn peek(c: Cur) -> int {
+    if c.i >= c.s.len {
+        return -1
+    }
+    c.s.bytes()[c.i] as int
+}
+
+fn skip_name(mut c: Cur) -> bool {
+    if peek(c) == 60 {
+        // <+05>: quoted
+        c.i += 1
+        while peek(c) >= 0 && peek(c) != 62 {
+            c.i += 1
+        }
+        if peek(c) != 62 {
+            return false
+        }
+        c.i += 1
+        return true
+    }
+    let start = c.i
+    while peek(c) >= 65 && peek(c) <= 90 || peek(c) >= 97 && peek(c) <= 122 {
+        c.i += 1
+    }
+    c.i - start >= 3
+}
+
+fn num(mut c: Cur) -> int {
+    var n = 0
+    var any = false
+    while peek(c) >= 48 && peek(c) <= 57 {
+        n = n * 10 + (peek(c) - 48)
+        c.i += 1
+        any = true
+    }
+    if any then n else -1
+}
+
+/// `[+-]hh[:mm[:ss]]` in seconds; `-1000000` when absent.
+fn hms(mut c: Cur) -> int {
+    var sign = 1
+    if peek(c) == 43 {
+        c.i += 1
+    } else if peek(c) == 45 {
+        sign = -1
+        c.i += 1
+    }
+    let h = num(mut c)
+    if h < 0 {
+        return -1000000
+    }
+    var t = h * 3600
+    if peek(c) == 58 {
+        c.i += 1
+        let m = num(mut c)
+        t += (if m < 0 then 0 else m) * 60
+        if peek(c) == 58 {
+            c.i += 1
+            let s = num(mut c)
+            t += if s < 0 then 0 else s
+        }
+    }
+    sign * t
+}
+
+/// A change, `Mm.w.d[/time]`, `Jn[/time]` or `n[/time]`, into
+/// (kind, a, b, c, time); kind -1 when malformed.
+fn change(mut c: Cur) -> (int, int, int, int, int) {
+    var kind = 2
+    var a = 0
+    var bb = 0
+    var cc = 0
+    if peek(c) == 77 {
+        c.i += 1
+        kind = 0
+        a = num(mut c)
+        if peek(c) != 46 {
+            return (-1, 0, 0, 0, 0)
+        }
+        c.i += 1
+        bb = num(mut c)
+        if peek(c) != 46 {
+            return (-1, 0, 0, 0, 0)
+        }
+        c.i += 1
+        cc = num(mut c)
+        if a < 1 || a > 12 || bb < 1 || bb > 5 || cc < 0 || cc > 6 {
+            return (-1, 0, 0, 0, 0)
+        }
+    } else if peek(c) == 74 {
+        c.i += 1
+        kind = 1
+        a = num(mut c)
+        if a < 1 || a > 365 {
+            return (-1, 0, 0, 0, 0)
+        }
+    } else {
+        a = num(mut c)
+        if a < 0 || a > 365 {
+            return (-1, 0, 0, 0, 0)
+        }
+    }
+    var t = 7200
+    if peek(c) == 47 {
+        c.i += 1
+        t = hms(mut c)
+        if t == -1000000 {
+            return (-1, 0, 0, 0, 0)
+        }
+    }
+    (kind, a, bb, cc, t)
+}
+
+/// A POSIX TZ string; `ok` false when it is not one.
+pub fn posix_rule(s: str) -> (bool, Rule) {
+    var c = Cur { s: s, i: 0 }
+    var r = utc_rule()
+    if !skip_name(mut c) {
+        return (false, r)
+    }
+    let so = hms(mut c)
+    if so == -1000000 {
+        return (false, r)
+    }
+    r.std_off = -so
+    if peek(c) < 0 {
+        return (true, r)
+    }
+    if !skip_name(mut c) {
+        return (false, r)
+    }
+    r.has_dst = true
+    r.dst_off = r.std_off + 3600
+    if peek(c) >= 0 && peek(c) != 44 {
+        let d = hms(mut c)
+        if d == -1000000 {
+            return (false, r)
+        }
+        r.dst_off = -d
+    }
+    if peek(c) != 44 {
+        // no rule: the US default, M3.2.0,M11.1.0 (as glibc's posixrules)
+        r.s_kind = 0
+        r.s_m = 3
+        r.s_w = 2
+        r.s_d = 0
+        r.s_time = 7200
+        r.e_kind = 0
+        r.e_m = 11
+        r.e_w = 1
+        r.e_d = 0
+        r.e_time = 7200
+        return (true, r)
+    }
+    c.i += 1
+    let (k1, a1, b1, c1, t1) = change(mut c)
+    if k1 < 0 || peek(c) != 44 {
+        return (false, r)
+    }
+    c.i += 1
+    let (k2, a2, b2, c2, t2) = change(mut c)
+    if k2 < 0 {
+        return (false, r)
+    }
+    r.s_kind = k1
+    r.s_m = a1
+    r.s_w = b1
+    r.s_d = c1
+    r.s_time = t1
+    r.e_kind = k2
+    r.e_m = a2
+    r.e_w = b2
+    r.e_d = c2
+    r.e_time = t2
+    (true, r)
+}
+
+// ---- TZif ----
+
+fn be(b: List[byte], at: int, n: int) -> int {
+    var v: int = 0
+    var k = 0
+    while k < n {
+        v = v * 256 + b[at + k] as int
+        k += 1
+    }
+    // two's complement for the signed 32-bit fields
+    let half: int = 2147483648
+    let full: int = 4294967296
+    if n == 4 && v >= half {
+        return v - full
+    }
+    v
+}
+
+fn be8(b: List[byte], at: int) -> int {
+    // a signed 64-bit big-endian value, read as two 32-bit halves so the
+    // checked arithmetic never leaves int
+    let hi = be(b, at, 4)
+    var lo: int = 0
+    var k = 4
+    while k < 8 {
+        lo = lo * 256 + b[at + k] as int
+        k += 1
+    }
+    let full: int = 4294967296
+    hi * full + lo
+}
+
+/// A zone from TZif bytes; `ok` false when they are not TZif.
+pub fn tzif(b: List[byte]) -> (bool, Zone) {
+    var z = utc()
+    if b.len < 44 ||
+        b[0] as int != 84 ||
+        b[1] as int != 90 ||
+        b[2] as int != 105 ||
+        b[3] as int != 102 {
+        return (false, z)
+    }
+    let ver = b[4] as int
+    var at = 0
+    var tsize = 4
+    if ver >= 50 {
+        // skip the version-1 block to the 64-bit one
+        let isut = be(b, 20, 4)
+        let isstd = be(b, 24, 4)
+        let leap = be(b, 28, 4)
+        let timecnt = be(b, 32, 4)
+        let typecnt = be(b, 36, 4)
+        let charcnt = be(b, 40, 4)
+        at = 44 + timecnt * 5 + typecnt * 6 + charcnt + leap * 8 + isstd + isut
+        tsize = 8
+        if b.len < at + 44 || b[at] as int != 84 {
+            return (false, z)
+        }
+    }
+    let isut = be(b, at + 20, 4)
+    let isstd = be(b, at + 24, 4)
+    let leap = be(b, at + 28, 4)
+    let timecnt = be(b, at + 32, 4)
+    let typecnt = be(b, at + 36, 4)
+    let charcnt = be(b, at + 40, 4)
+    var p = at + 44
+    let need = p + timecnt * (tsize + 1) + typecnt * 6 + charcnt + leap * (tsize + 4) + isstd + isut
+    if b.len < need || typecnt < 1 {
+        return (false, z)
+    }
+    var times = List[int]()
+    var k = 0
+    while k < timecnt {
+        let t = if tsize == 8 then be8(b, p + k * 8) else be(b, p + k * 4, 4)
+        (mut times).push(t)
+        k += 1
+    }
+    p += timecnt * tsize
+    var idx = List[int]()
+    k = 0
+    while k < timecnt {
+        (mut idx).push(b[p + k] as int)
+        k += 1
+    }
+    p += timecnt
+    var offs = List[int]()
+    var dst = List[bool]()
+    k = 0
+    while k < typecnt {
+        (mut offs).push(be(b, p + k * 6, 4))
+        (mut dst).push(b[p + k * 6 + 4] as int != 0)
+        k += 1
+    }
+    p += typecnt * 6 + charcnt + leap * (tsize + 4) + isstd + isut
+    z.first = offs[0]
+    z.times = times
+    z.idx = idx
+    z.offs = offs
+    z.has_rule = false
+    if tsize == 8 && p < b.len && b[p] as int == 10 {
+        var e = p + 1
+        while e < b.len && b[e] as int != 10 {
+            e += 1
+        }
+        let footer = str_from_utf8(b[p + 1..e]) else ""
+        if footer.len > 0 {
+            let (ok, r) = posix_rule(footer)
+            if ok {
+                z.has_rule = true
+                z.rule = r
+            }
+        }
+    }
+    (true, z)
+}
+
+fn load_file(path: str) -> (bool, Zone) {
+    let b = fs_read_bytes(path) else |_| {
+        return (false, utc())
+    }
+    tzif(b)
+}
+
+/// The zone the C library would use (the module header's rules).
+pub fn local() -> Zone {
+    var set = true
+    let tz0 = env_get("TZ") else |_| {
+        set = false
+        ""
+    }
+    if !set {
+        let (ok, z) = load_file("/etc/localtime")
+        return if ok then z else utc()
+    }
+    var tz = tz0
+    if tz.len == 0 {
+        return utc()
+    }
+    if tz.starts_with(":") {
+        tz = tz[1..]
+    }
+    if tz.starts_with("/") {
+        let (ok, z) = load_file(tz)
+        return if ok then z else utc()
+    }
+    let (okf, zf) = load_file("/usr/share/zoneinfo/" + tz)
+    if okf {
+        return zf
+    }
+    let (ok, r) = posix_rule(tz)
+    if ok {
+        var z = utc()
+        z.rule = r
+        return z
+    }
+    utc()
+}
+
+/// Local (year, month, day, hour, minute) of epoch second `t`.
+pub fn fields(z: Zone, t: int) -> (int, int, int, int, int) {
+    let lt = t + offset(z, t)
+    let day = floordiv(lt, 86400)
+    let secs = lt - day * 86400
+    let (y, m, d) = civil(day)
+    (y, m, d, secs / 3600, secs / 60 % 60)
+}
