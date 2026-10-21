@@ -386,6 +386,6 @@ pub fn end(c: Colors, mut o: out.Out) {
         return
     }
     out.s(mut o, code_or(c, c_left(), "\u{1b}["))
-    out.s(mut o, code_or(c, c_reset(), "0"))
+    out.s(mut o, code_or(c, c_reset(), "00"))
     out.s(mut o, code_or(c, c_right(), "m"))
 }
