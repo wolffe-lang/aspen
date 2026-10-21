@@ -10,10 +10,11 @@
 //! so aspen also stats only for a flag that needs metadata, a symlink,
 //! or an entry whose type the host did not give. `-l`, `-x`,
 //! `--filelimit`, `--condense`, `--gitignore`, `--info`, `--fromfile`,
-//! `-R`, `-U` and the parallel stat pool are ap01's.
+//! `-R` and `-U` are ap01's.
 
 use ent
 use glob
+use std.os
 use json
 use opts
 use text
@@ -27,6 +28,9 @@ pub struct Walk {
     t: text.Text,
     j: json.Json,
     ents: List[ent.Ent],
+    lnks: List[List[byte]],
+    kids: List[List[int]],
+    none: List[byte],
     dirs: int,
     files: int,
     size: int,
@@ -42,6 +46,9 @@ pub fn new(is_json: bool, utf8: bool, take t: text.Text, take j: json.Json) -> W
         t: t,
         j: j,
         ents: List[ent.Ent](),
+        lnks: List[List[byte]](),
+        kids: List[List[int]](),
+        none: List[byte](),
         dirs: z,
         files: z,
         size: z,
@@ -72,7 +79,7 @@ fn name_str(nm: List[byte]) -> str {
 }
 
 fn join(path: str, nm: List[byte]) -> str {
-    path + "/" + name_str(nm)
+    "{path}/{name_str(nm)}"
 }
 
 /// The entry's path as bytes, for -P/-I's full-path match.
@@ -106,6 +113,8 @@ fn read_level(
     let ipats = o.ipatterns.len > 0
     var rs = rows
     var ev = List[ent.Ent]()
+    var pend = List[int]()
+    var pp = List[str]()
     while rs.len > 0 {
         let r = (mut rs).pop() else List[byte]()
         if r.len < 2 {
@@ -150,8 +159,8 @@ fn read_level(
                 }
                 m
             }
-            e.lnk = target
-            e.has_lnk = true
+            e.lnk = w.lnks.len
+            (mut w.lnks).push(target)
             var orphan = false
             let tw = fs_stat(lp) else |_| {
                 orphan = true
@@ -183,23 +192,228 @@ fn read_level(
             continue
         }
         if deferred {
-            // the C batches these after the filters (`src/traverse.c:583`);
-            // one at a time here, after the same filters, the same drops
-            let sw = fs_lstat(join(path, e.nm)) else |_| {
-                w.errors += 1
-                continue
-            }
-            if t == ent.reg() && is_exec(sw[4]) {
-                e.flags = e.flags | ent.f_exec()
-            }
-            if want {
-                e.st = ent.meta_of(sw)
-                e.has_st = true
-            }
+            // stat'ed after the filters, as a batch (`src/traverse.c:583`)
+            (mut pend).push(ev.len)
+            (mut pp).push(join(path, e.nm))
         }
         (mut ev).push(e)
     }
+    if pp.len > 0 {
+        stat_batch(mut w, o, mut ev, pend, pp, want)
+    }
     ev
+}
+
+/// The deferred stats of one level (`src/traverse.c:393`): serial below
+/// C aspen's threshold of 384 (`ASP_STAT_PAR_MIN`), else on one task per
+/// 256 entries (`ASP_STAT_PER_WORKER`), at most the CPUs wolf-std counts
+/// and 16 (`src/pool.c:134`). Output is decided by name before any stat
+/// (the order is the sort's), so the split changes only the time. An
+/// entry whose stat fails is dropped, in order, and counted an error.
+fn stat_batch(
+    mut w: Walk,
+    o: opts.Opts,
+    mut ev: List[ent.Ent],
+    pend: List[int],
+    pp: List[str],
+    want: bool,
+) {
+    let n = pp.len
+    let want_mode = o.permflag || o.classify
+    let want_size = o.sizeflag || o.duflag
+    let want_time = o.dateflag || o.sort == opts.sort_mtime()
+    var workers = (n + 255) / 256
+    let cpus = os.cpus() else 1
+    if workers > cpus {
+        workers = cpus
+    }
+    if workers > 16 {
+        workers = 16
+    }
+    var failed = false
+    if n < 384 || workers < 2 {
+        var k = 0
+        while k < n {
+            var ok = true
+            let sw = fs_lstat(pp[k]) else |_| {
+                ok = false
+                List[int]()
+            }
+            if ok {
+                apply(mut ev, pend[k], sw[0], sw[4], sw[1], sw[14], sw[16], want)
+            } else {
+                ev[pend[k]].kind = -1
+                failed = true
+            }
+            k += 1
+        }
+    } else {
+        // each task stats a contiguous chunk and answers with one message:
+        // its chunk number and a line per path ("kind mode size mtime
+        // ctime", or "x" for a failure); a channel carries no list
+        let ch = channel[(int, str)](workers)
+        scope s {
+            var c = 0
+            while c < workers {
+                let lo = c * n / workers
+                let hi = (c + 1) * n / workers
+                let chunk = pp[lo..hi]
+                let id = c
+                s.spawn(fn() {
+                    var b = List[byte]()
+                    for p in chunk {
+                        var ok = true
+                        let sw = fs_lstat(p) else |_| {
+                            ok = false
+                            List[int]()
+                        }
+                        if ok {
+                            // only the words a flag reads: kind and mode
+                            // (-p, -F), size (-s, --du), mtime (-D, -t)
+                            if want_mode {
+                                put_word(mut b, sw[0])
+                                put_word(mut b, sw[4])
+                            }
+                            if want_size {
+                                put_word(mut b, sw[1])
+                            }
+                            if want_time {
+                                put_word(mut b, sw[14])
+                            }
+                        } else {
+                            (mut b).push(120 as byte)
+                        }
+                        (mut b).push(10 as byte)
+                    }
+                    let text = str_from_utf8(b) else ""
+                    ch.send((id, text)) else |_| {}
+                })
+                c += 1
+            }
+            var got = 0
+            while got < workers {
+                var live = true
+                let (id, text) = ch.recv() else |_| {
+                    live = false
+                    (0, "")
+                }
+                if !live {
+                    break
+                }
+                let lo = id * n / workers
+                var k = lo
+                var i = 0
+                let len = text.len
+                while i < len {
+                    if text.bytes()[i] as int == 120 {
+                        ev[pend[k]].kind = -1
+                        failed = true
+                        i += 2
+                    } else {
+                        var kind = ev[pend[k]].kind
+                        var mode = 0
+                        var size: int = 0
+                        var mtime: int = 0
+                        if want_mode {
+                            let (v1, j1) = word(text, i)
+                            let (v2, j2) = word(text, j1)
+                            kind = v1
+                            mode = v2
+                            i = j2
+                        }
+                        if want_size {
+                            let (v, j) = word(text, i)
+                            size = v
+                            i = j
+                        }
+                        if want_time {
+                            let (v, j) = word(text, i)
+                            mtime = v
+                            i = j
+                        }
+                        i += 1
+                        apply(mut ev, pend[k], kind, mode, size, mtime, 0, want)
+                    }
+                    k += 1
+                }
+                got += 1
+            }
+        }
+    }
+    if failed {
+        // drop the failed ones, in order (tree drops an entry whose stat
+        // fails, `src/traverse.c:586`)
+        var kept = List[ent.Ent]()
+        var i = 0
+        while i < ev.len {
+            if ev[i].kind == -1 {
+                w.errors += 1
+            } else {
+                (mut kept).push(copy ev[i])
+            }
+            i += 1
+        }
+        ev = kept
+    }
+}
+
+/// The number at `text[i..]` and the index after the space that ends it.
+fn word(text: str, i0: int) -> (int, int) {
+    var i = i0
+    var neg = false
+    if text.bytes()[i] as int == 45 {
+        neg = true
+        i += 1
+    }
+    var v: int = 0
+    let len = text.len
+    while i < len {
+        let c = text.bytes()[i] as int
+        if c < 48 || c > 57 {
+            break
+        }
+        v = v * 10 + (c - 48)
+        i += 1
+    }
+    (if neg then -v else v, i + 1)
+}
+
+fn put_word(mut b: List[byte], v: int) {
+    var n = v
+    if n < 0 {
+        (mut b).push(45 as byte)
+        n = -n
+    }
+    var p: int = 1
+    while p <= n / 10 {
+        p = p * 10
+    }
+    while p > 0 {
+        (mut b).push((48 + n / p % 10) as byte)
+        p = p / 10
+    }
+    (mut b).push(32 as byte)
+}
+
+/// One stat's answer into entry `k`: the exec bit for `-F`, and the
+/// metadata when a flag wants it.
+fn apply(
+    mut ev: List[ent.Ent],
+    k: int,
+    kind: int,
+    mode: int,
+    size: int,
+    mtime: int,
+    ctime: int,
+    want: bool,
+) {
+    if ev[k].kind == ent.reg() && is_exec(mode) {
+        ev[k].flags = ev[k].flags | ent.f_exec()
+    }
+    if want {
+        ev[k].st = ent.Meta { kind: kind, mode: mode, size: size, mtime: mtime, ctime: ctime }
+        ev[k].has_st = true
+    }
 }
 
 /// Byte order of two names (`strcmp`, `src/sort.c:56`: v1 collates by
@@ -249,8 +463,15 @@ fn cmp(o: opts.Opts, ev: List[ent.Ent], a: int, b: int) -> int {
     if o.reverse then -v else v
 }
 
-/// The display order of `ev`: a bottom-up merge sort of indices,
-/// O(n log n) (names in a directory are unique, so the order is total).
+/// The display order of `ev`: a bottom-up merge sort of indices, O(n
+/// log n) (names in a directory are unique, so the order is total). The
+/// plain name order (no `-t`, no `--dirsfirst`) compares a packed key
+/// first: a name's first seven bytes as one `int` (no name holds a NUL,
+/// so a byte past the end is 0 and sorts first, as `strcmp` has it), and
+/// the bytes after them only when two keys tie; `-r` reverses that order
+/// whole, which is exact for unique names. C aspen sorts the same order
+/// with an MSD radix (`src/sort.c:163`); every other order goes through
+/// `cmp`, tree's comparator.
 fn order(o: opts.Opts, ev: List[ent.Ent]) -> List[int] {
     let n = ev.len
     var a = List[int]()
@@ -260,6 +481,18 @@ fn order(o: opts.Opts, ev: List[ent.Ent]) -> List[int] {
         (mut a).push(i)
         (mut tmp).push(0)
         i += 1
+    }
+    if n < 2 {
+        return a
+    }
+    let plain = o.sort == opts.sort_name() && !o.dirsfirst
+    var keys = List[int]()
+    if plain {
+        i = 0
+        while i < n {
+            (mut keys).push(pack(ev[i].nm))
+            i += 1
+        }
     }
     var width = 1
     while width < n {
@@ -271,7 +504,15 @@ fn order(o: opts.Opts, ev: List[ent.Ent]) -> List[int] {
             var y = mid
             var k = lo
             while x < mid && y < hi {
-                if cmp(o, ev, a[y], a[x]) < 0 {
+                var take_y = false
+                if plain {
+                    let ky = keys[a[y]]
+                    let kx = keys[a[x]]
+                    take_y = ky < kx || ky == kx && later(ev[a[x]].nm, ev[a[y]].nm, 8)
+                } else {
+                    take_y = cmp(o, ev, a[y], a[x]) < 0
+                }
+                if take_y {
                     tmp[k] = a[y]
                     y += 1
                 } else {
@@ -297,7 +538,49 @@ fn order(o: opts.Opts, ev: List[ent.Ent]) -> List[int] {
         tmp = sw
         width = width * 2
     }
+    if plain && o.reverse {
+        var x = 0
+        var y = n - 1
+        while x < y {
+            let t = a[x]
+            a[x] = a[y]
+            a[y] = t
+            x += 1
+            y -= 1
+        }
+    }
     a
+}
+
+/// A name's first seven bytes, big-endian, as one non-negative `int`
+/// (`nm[1..8]`; 0 for a byte past the end).
+fn pack(nm: List[byte]) -> int {
+    var k: int = 0
+    var i = 1
+    while i < 8 {
+        k = k * 256
+        if i < nm.len {
+            k += nm[i] as int
+        }
+        i += 1
+    }
+    k
+}
+
+/// Whether name `x` sorts after name `y`, both equal before position `d`.
+fn later(x: List[byte], y: List[byte], d: int) -> bool {
+    var i = d
+    let nx = x.len
+    let ny = y.len
+    while i < nx && i < ny {
+        let p = x[i] as int
+        let q = y[i] as int
+        if p != q {
+            return p > q
+        }
+        i += 1
+    }
+    nx > ny
 }
 
 /// Whether to descend into `e` at `depth` (`src/traverse.c:646`; v1: a
@@ -314,6 +597,7 @@ fn walk_dir(mut w: Walk, o: opts.Opts, path: str, take rows: List[List[byte]], d
     let ev = read_level(mut w, o, path, take rows, false)
     let ord = order(o, ev)
     let n = ord.len
+    text.begin_level(mut w.t, depth)
     var i = 0
     while i < n {
         let k = ord[i]
@@ -325,7 +609,11 @@ fn walk_dir(mut w: Walk, o: opts.Opts, path: str, take rows: List[List[byte]], d
         }
         let descend = descends(o, ev[k], depth)
         let cp = if descend || o.fullpath || w.t.debug then join(path, ev[k].nm) else ""
-        text.entry(mut w.t, o, ev[k], cp, depth, is_last)
+        if ev[k].lnk >= 0 {
+            text.entry(mut w.t, o, ev[k], w.lnks[ev[k].lnk], cp, depth, is_last)
+        } else {
+            text.entry(mut w.t, o, ev[k], w.none, cp, depth, is_last)
+        }
         if descend {
             var opened = true
             let sub = fs_read_dir_entries(cp) else |_| {
@@ -380,8 +668,9 @@ fn build_level(
                 List[List[byte]]()
             }
             if opened {
-                e.child = build_level(mut w, o, cp, take sub, depth + 1, child_suppress)
-                e.has_child = true
+                let ch = build_level(mut w, o, cp, take sub, depth + 1, child_suppress)
+                e.child = w.kids.len
+                (mut w.kids).push(ch)
             } else {
                 e.err = "error opening dir"
                 w.errors += 1
@@ -399,12 +688,13 @@ fn prune_level(mut w: Walk, arr: List[int]) -> List[int] {
     var keep = List[int]()
     for k in arr {
         let dl = ent.dir_like(w.ents[k])
-        if dl && w.ents[k].has_child {
-            let kids = copy w.ents[k].child
+        let c = w.ents[k].child
+        if dl && c >= 0 {
+            let kids = copy w.kids[c]
             let kept = prune_level(mut w, kids)
-            w.ents[k].child = kept
+            w.kids[c] = kept
         }
-        let empty = dl && (!w.ents[k].has_child || w.ents[k].child.len == 0)
+        let empty = dl && (c < 0 || w.kids[c].len == 0)
         if empty && w.ents[k].flags & ent.f_matched() == 0 {
             continue
         }
@@ -419,8 +709,8 @@ fn du_level(mut w: Walk, arr: List[int]) -> int {
     var sum: int = 0
     for k in arr {
         let dl = ent.dir_like(w.ents[k])
-        if dl && w.ents[k].has_child && w.ents[k].has_st {
-            let kids = copy w.ents[k].child
+        if dl && w.ents[k].child >= 0 && w.ents[k].has_st {
+            let kids = copy w.kids[w.ents[k].child]
             let sub = du_level(mut w, kids)
             w.ents[k].st.size = w.ents[k].st.size + sub
         }
@@ -434,6 +724,7 @@ fn du_level(mut w: Walk, arr: List[int]) -> int {
 /// Emit a built level to the text renderer (`src/traverse.c:984`).
 fn emit_level(mut w: Walk, o: opts.Opts, path: str, arr: List[int], depth: int) {
     let n = arr.len
+    text.begin_level(mut w.t, depth)
     var i = 0
     while i < n {
         let k = arr[i]
@@ -445,10 +736,15 @@ fn emit_level(mut w: Walk, o: opts.Opts, path: str, arr: List[int], depth: int) 
         }
         let cp = join(path, w.ents[k].nm)
         let e = copy w.ents[k]
-        text.entry(mut w.t, o, e, cp, depth, is_last)
-        if e.has_child {
+        if e.lnk >= 0 {
+            text.entry(mut w.t, o, e, w.lnks[e.lnk], cp, depth, is_last)
+        } else {
+            text.entry(mut w.t, o, e, w.none, cp, depth, is_last)
+        }
+        if e.child >= 0 {
             text.newline(mut w.t)
-            emit_level(mut w, o, cp, e.child, depth + 1)
+            let kids = copy w.kids[e.child]
+            emit_level(mut w, o, cp, kids, depth + 1)
         } else {
             if e.err.len > 0 {
                 text.error(mut w.t, e.err)
@@ -550,7 +846,7 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
             }
         }
         if w.is_json {
-            json.tree(mut w.j, o, dr, rkind, st, has_st, w.ents, top, last_root)
+            json.tree(mut w.j, o, dr, rkind, st, has_st, w.ents, w.kids, w.lnks, top, last_root)
         } else {
             text.root(mut w.t, o, dr, "", st, has_st)
             if top.len > 0 {
@@ -559,6 +855,8 @@ pub fn root(mut w: Walk, o: opts.Opts, root: str, last_root: bool) {
             emit_level(mut w, o, cpath, top, 1)
         }
         w.ents = List[ent.Ent]()
+        w.kids = List[List[int]]()
+        w.lnks = List[List[byte]]()
         return
     }
     let before = w.dirs + w.files
