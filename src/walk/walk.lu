@@ -485,48 +485,75 @@ fn stat_chunk(names: List[byte], dir: str, opt: opts.Opts, mut cs: info.Cols, f:
             k += 1
         }
         i = end
-        let p = str_from_utf8(pb) else "\u{fffd}/"
+        // the path and the stat's twenty words die with each name: only
+        // their numbers leave the region (wolf frees nothing a caller can
+        // still see before the program ends, so this halves `-s`'s peak)
         var ok = true
-        let sw = fs_lstat(p) else |_| {
-            ok = false
-            List[int]()
+        var kind = 0
+        var mode = 0
+        var size: int = 0
+        var mt: int = 0
+        var ct: int = 0
+        var uid: int = 0
+        var gid: int = 0
+        var ino: int = 0
+        var dev: int = 0
+        region one {
+            let p = str_from_utf8(pb) else "\u{fffd}/"
+            let sw = fs_lstat(p) else |_| {
+                ok = false
+                List[int]()
+            }
+            if ok {
+                kind = sw[0]
+                size = sw[1]
+                mode = sw[4]
+                uid = sw[6]
+                gid = sw[7]
+                dev = sw[9]
+                ino = sw[10]
+                mt = sw[14]
+                ct = sw[16]
+            }
         }
+        let m = ent.Meta { kind: kind, mode: mode, size: size, mtime: mt, ctime: ct }
+        let d = ent.Ids { uid: uid, gid: gid, ino: ino, dev: dev }
         if ok && f.lean {
             while col.buf.len > 0 {
                 let _ = (mut col.buf).pop() else 0 as byte
             }
-            info.put_fill(mut col, opt, mut cs, ent.meta_of(sw), ent.ids_of(sw), true)
+            info.put_fill(mut col, opt, mut cs, m, d, true)
             put_word(mut b, col.buf.len)
             for x in col.buf {
                 (mut b).push(x)
             }
         } else if ok {
-            put_word(mut b, sw[0])
+            put_word(mut b, m.kind)
             if f.mode {
-                put_word(mut b, sw[4])
+                put_word(mut b, m.mode)
             }
             if f.size {
-                put_word(mut b, sw[1])
+                put_word(mut b, m.size)
             }
             if f.mtime {
-                put_word(mut b, sw[14])
+                put_word(mut b, m.mtime)
             }
             if f.ctime {
-                put_word(mut b, sw[16])
+                put_word(mut b, m.ctime)
             }
             if f.ids {
-                put_word(mut b, sw[6])
-                put_word(mut b, sw[7])
+                put_word(mut b, d.uid)
+                put_word(mut b, d.gid)
             }
             if f.ident {
-                put_word(mut b, sw[10])
-                put_word(mut b, sw[9])
+                put_word(mut b, d.ino)
+                put_word(mut b, d.dev)
             }
             if f.precol {
                 while col.buf.len > 0 {
                     let _ = (mut col.buf).pop() else 0 as byte
                 }
-                info.put_fill(mut col, opt, mut cs, ent.meta_of(sw), ent.ids_of(sw), true)
+                info.put_fill(mut col, opt, mut cs, m, d, true)
                 put_word(mut b, col.buf.len)
                 for x in col.buf {
                     (mut b).push(x)
@@ -588,13 +615,31 @@ fn stat_batch(
     if workers < 2 {
         var k = 0
         while k < n {
+            // the path and the twenty words die with each entry (as in
+            // `stat_chunk`); their numbers leave the region
             var ok = true
-            let sw = fs_lstat(join(path, ev[pend[k]].nm)) else |_| {
-                ok = false
-                List[int]()
+            var q = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+            region one {
+                let sw = fs_lstat(join(path, ev[pend[k]].nm)) else |_| {
+                    ok = false
+                    List[int]()
+                }
+                if ok {
+                    q[0] = sw[0]
+                    q[1] = sw[1]
+                    q[2] = sw[4]
+                    q[3] = sw[6]
+                    q[4] = sw[7]
+                    q[5] = sw[9]
+                    q[6] = sw[10]
+                    q[7] = sw[14]
+                    q[8] = sw[16]
+                }
             }
             if ok {
-                apply(mut ev, mut w.a, pend[k], ent.meta_of(sw), ent.ids_of(sw), nids, want)
+                let m = ent.Meta { kind: q[0], mode: q[2], size: q[1], mtime: q[7], ctime: q[8] }
+                let d = ent.Ids { uid: q[3], gid: q[4], ino: q[6], dev: q[5] }
+                apply(mut ev, mut w.a, pend[k], m, d, nids, want)
             } else {
                 ev[pend[k]].flags = ev[pend[k]].flags | ent.f_stat_failed()
                 failed = true
