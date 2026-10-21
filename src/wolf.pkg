@@ -11,5 +11,5 @@ pkg {
     name: "aspen",
     version: "0.1.0",
     edition: "1",
-    capabilities: [env, fs],
+    capabilities: [env, fs, exec],
 }
