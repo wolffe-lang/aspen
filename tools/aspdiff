@@ -1,0 +1,100 @@
+#!/bin/sh
+# aspdiff — C aspen's own `--asp-diff A B` (src/diff.c), which tree has no
+# counterpart for, so its oracle is C aspen at aspen.pin, built in the
+# container: both binaries compare the same pairs of trees, under the same
+# flags and locales, and their stdout, stderr and status must be equal.
+#
+#   tools/aspdiff [--bin ASPEN] [--c-bin C_ASPEN]
+#
+# The pairs: two trees that differ in every way the merge tells apart
+# (an entry added, removed, a file grown, a mode changed, a link
+# retargeted, a file become a directory and back, changes deep under an
+# unchanged directory, a subtree added and removed whole), an identical
+# pair, an empty one against a full one; the error rows: a root that does
+# not exist, one root, three. Exit 1 on a difference.
+# Run it in the oracle's container.
+set -u
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+bin=$ASPEN_ROOT/target/release/aspen
+cbin=$ASPEN_ROOT/.oracle/c-aspen/aspen
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --bin) bin=$2; shift 2 ;;
+    --c-bin) cbin=$2; shift 2 ;;
+    *) echo "aspdiff: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+for b in "$bin" "$cbin"; do
+    case "$b" in /*) ;; *) echo "aspdiff: $b is not absolute" >&2; exit 2 ;; esac
+    [ -x "$b" ] || { echo "aspdiff: no binary at $b" >&2; exit 2; }
+done
+w=$(mktemp -d "${TMPDIR:-/tmp}/aspen-aspdiff.XXXXXX") || exit 2
+trap 'rm -rf "$w"' EXIT INT TERM
+cd "$w" || exit 2
+mk() { # DIR: the base tree
+    mkdir -p "$1/src/lib" "$1/doc" "$1/gone/deep" "$1/same/inner" "$1/flip"
+    printf 'a' >"$1/src/main.c"; printf 'b' >"$1/src/lib/util.c"; printf 'c' >"$1/README"
+    printf 'd' >"$1/doc/guide.md"; printf 'e' >"$1/gone/deep/x"; printf 'f' >"$1/same/inner/y"
+    printf 'g' >"$1/same/z"; printf 'h' >"$1/.hidden"; printf 'i' >"$1/turn"
+    printf 'j' >"$1/flip/k"; chmod 644 "$1/README"
+    ln -s README "$1/link"
+}
+mk A
+cp -a A B
+touch -t 200102030405.06 A/src/main.c B/src/main.c
+printf 'aa' >B/src/main.c; touch -t 200102030405.06 B/src/main.c         # grown
+chmod 755 B/README                                                          # mode
+rm B/link; ln -s doc/guide.md B/link                                        # retargeted
+rm -rf B/gone                                                               # removed whole
+mkdir -p B/new/sub; printf 'n' >B/new/sub/file                              # added whole
+printf 'q' >B/same/inner/added                                              # deep under unchanged
+rm B/turn; mkdir B/turn; printf 't' >B/turn/inside                          # file -> directory
+rm -rf B/flip; printf 'f' >B/flip                                           # directory -> file
+printf 'H' >B/.hidden2
+mkdir -p E
+cp -a A C
+fail=0
+n=0
+chk() { # LABEL ENV ARGS...
+    _l=$1 _e=$2
+    shift 2
+    n=$((n + 1))
+    # shellcheck disable=SC2086
+    env $_e "$cbin" "$@" >c.out 2>c.err
+    echo $? >c.rc
+    # shellcheck disable=SC2086
+    env $_e "$bin" "$@" >a.out 2>a.err
+    echo $? >a.rc
+    if ! cmp -s c.out a.out || ! cmp -s c.err a.err || ! cmp -s c.rc a.rc; then
+        fail=$((fail + 1))
+        echo "  DIFF [$_l]: C aspen rc $(cat c.rc), aspen rc $(cat a.rc)"
+        diff c.out a.out | sed -n '1,10p' | cat -v | sed 's/^/    out /'
+        diff c.err a.err | sed -n '1,4p' | sed 's/^/    err /'
+    fi
+}
+for lc in C C.UTF-8; do
+    chk "$lc plain" "LC_ALL=$lc" --asp-diff A B
+    chk "$lc reverse" "LC_ALL=$lc" --asp-diff B A
+    chk "$lc -a" "LC_ALL=$lc" --asp-diff -a A B
+    chk "$lc -d" "LC_ALL=$lc" --asp-diff -d A B
+    chk "$lc -L 1" "LC_ALL=$lc" --asp-diff -L 1 A B
+    chk "$lc -Q -N" "LC_ALL=$lc" --asp-diff -Q A B
+    chk "$lc -P" "LC_ALL=$lc" --asp-diff -P '*.c' A B
+    chk "$lc -I" "LC_ALL=$lc" --asp-diff -I doc A B
+    chk "$lc --noreport" "LC_ALL=$lc" --asp-diff --noreport A B
+    chk "$lc --charset" "LC_ALL=$lc" --asp-diff --charset=ascii A B
+    chk "$lc -r -t" "LC_ALL=$lc" --asp-diff -r -t --dirsfirst A B
+    chk "$lc same" "LC_ALL=$lc" --asp-diff A C
+    chk "$lc empty" "LC_ALL=$lc" --asp-diff E A
+    chk "$lc colour" "LC_ALL=$lc TERM=xterm CLICOLOR_FORCE=1" --asp-diff A B
+    chk "$lc colour -C" "LC_ALL=$lc TERM=xterm" --asp-diff -C A B
+    chk "$lc after -f" "LC_ALL=$lc" -f A --asp-diff B
+    chk "$lc missing" "LC_ALL=$lc" --asp-diff A /no/such
+    chk "$lc both missing" "LC_ALL=$lc" --asp-diff /no/a /no/b
+    chk "$lc one root" "LC_ALL=$lc" --asp-diff A
+    chk "$lc three" "LC_ALL=$lc" --asp-diff A B C
+    chk "$lc none" "LC_ALL=$lc" --asp-diff
+    chk "$lc -o" "LC_ALL=$lc" --asp-diff -o /dev/null A B
+done
+echo "aspdiff: $n runs, $fail differences against C aspen $("$cbin" --version)"
+[ "$fail" = 0 ]
