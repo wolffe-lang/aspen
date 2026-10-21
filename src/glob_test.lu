@@ -1,0 +1,65 @@
+//! The matcher's rows: C aspen's own tests/unit/glob_test.c cases (the
+//! maintainer's, at aspen.pin), and the full-path rule -P/-I use.
+
+use glob
+
+fn b(s: str) -> List[byte] {
+    var out = List[byte]()
+    for x in s.bytes() {
+        (mut out).push(x)
+    }
+    out
+}
+
+fn m(name: str, pat: str, isdir: bool, ic: bool) -> int {
+    let n = b(name)
+    let p = b(pat)
+    glob.patmatch(n, 0, n.len, p, 0, p.len, isdir, ic)
+}
+
+fn main() {
+    // tests/unit/glob_test.c, row for row
+    assert(m("foo.txt", "foo.txt", false, false) == 1, "literal")
+    assert(m("foo.txt", "*.txt", false, false) == 1, "star match")
+    assert(m("foo.log", "*.txt", false, false) == 0, "star mismatch")
+    assert(m("a/b", "*", false, false) == 0, "star stops at /")
+    assert(m("a/b", "**", false, false) == 1, "starstar crosses /")
+    assert(m("ab", "a?", false, false) == 1, "question")
+    assert(m("a", "[abc]", false, false) == 1, "class")
+    assert(m("d", "[^abc]", false, false) == 1, "class neg hit")
+    assert(m("a", "[^abc]", false, false) == 0, "class neg miss")
+    assert(m("c", "[a-z]", false, false) == 1, "range")
+    assert(m("foo", "foo|bar", false, false) == 1, "alt left")
+    assert(m("bar", "foo|bar", false, false) == 1, "alt right")
+    assert(m("baz", "foo|bar", false, false) == 0, "alt none")
+    assert(m("FOO", "foo", false, true) == 1, "ignore-case")
+    assert(m("d", "d/", false, false) == 0, "dironly vs file")
+    assert(m("d", "d/", true, false) == 1, "dironly vs dir")
+    assert(m("x", "abc|", false, false) == -1, "syntax error -> -1")
+    assert(m("xyz", "a||b", false, false) == -1, "empty alt mid -> err")
+    assert(m("a", "a||b", false, false) == 1, "real alt beside empty")
+    assert(m("xyz", "|abc", false, false) == -1, "leading | -> err")
+    assert(m("xyz", "foo|", false, false) == -1, "trailing | -> err")
+    assert(m("a", "[]a]", false, false) == 0, "[]a] matches nothing")
+    assert(m("]", "[]a]", false, false) == 0, "[]a] vs ] nothing")
+    assert(m("a", "[a-]", false, false) == -1, "dangling [a- -> err")
+    // more of the manual's rules
+    assert(m("a/x/b", "a/**/b", false, false) == 1, "** spans a directory")
+    assert(m("a/b", "a/**/b", false, false) == 1, "/**/ may match a single /")
+    assert(m("ab", "a\\b", false, false) == 1, "an escaped literal")
+    assert(m("a*", "a\\*", false, false) == 1, "an escaped star")
+    assert(m("ab", "a\\*", false, false) == 0, "an escaped star is no wild card")
+    assert(m("A", "[a-c]", false, true) == 1, "a range ignoring case")
+    assert(m("", "*", false, false) == 1, "a star matches nothing at all")
+    // the full-path rule (tree 2.3.2, C aspen src/traverse.c:259)
+    var pats = List[List[byte]]()
+    (mut pats).push(b("alpha/*.txt"))
+    let p1 = b("root/alpha/a1.txt")
+    assert(glob.full(pats, p1, 11, false, false), "a path suffix matches")
+    let p2 = b("root/beta/a1.txt")
+    assert(!glob.full(pats, p2, 10, false, false), "another directory does not")
+    var base = List[List[byte]]()
+    (mut base).push(b("*.txt"))
+    assert(glob.full(base, p2, 10, false, false), "the base name matches")
+    assert(glob.any(base, b("x.txt"), 0, 5, false, false), "any")
+}
