@@ -1,0 +1,108 @@
+//! The calendar's rows: civil dates both ways, the POSIX TZ rules (a
+//! northern and a southern zone), and a zone file built by hand from RFC
+//! 8536's layout.
+
+use clock
+
+fn main() {
+    let (y, m, d) = clock.civil(0)
+    assert(y == 1970 && m == 1 && d == 1, "the epoch")
+    let (y2, m2, d2) = clock.civil(11016)
+    assert(y2 == 2000 && m2 == 2 && d2 == 29, "a leap day")
+    let (y3, m3, d3) = clock.civil(-1)
+    assert(y3 == 1969 && m3 == 12 && d3 == 31, "before the epoch")
+    assert(clock.days(2026, 10, 21) == 20747, "days from civil")
+    assert(clock.days(1600, 3, 1) < 0, "a date long before")
+    var k = -800000
+    while k < 800000 {
+        let (a, b, c) = clock.civil(k)
+        assert(clock.days(a, b, c) == k, "civil and days invert")
+        k += 9973
+    }
+    let (ok, r) = clock.posix_rule("EST5EDT,M3.2.0,M11.1.0")
+    assert(ok && r.std_off == -18000 && r.dst_off == -14400, "EST5EDT parses")
+    var z = clock.utc()
+    z.rule = r
+    // 2026: DST from March 8 07:00 UTC to November 1 06:00 UTC
+    assert(clock.offset(z, 1772953199) == -18000, "a second before DST")
+    assert(clock.offset(z, 1772953200) == -14400, "DST starts")
+    assert(clock.offset(z, 1793512799) == -14400, "a second before the end")
+    assert(clock.offset(z, 1793512800) == -18000, "DST ends")
+    let (oka, ra) = clock.posix_rule("AEST-10AEDT,M10.1.0,M4.1.0/3")
+    assert(oka && ra.std_off == 36000, "a southern zone parses")
+    var za = clock.utc()
+    za.rule = ra
+    assert(clock.offset(za, 1767225600) == 39600, "January is summer there")
+    assert(clock.offset(za, 1783000000) == 36000, "July is winter there")
+    let (okb, _) = clock.posix_rule("nonsense")
+    assert(!okb, "not a rule")
+    let (okc, rc) = clock.posix_rule("<+0530>-5:30")
+    assert(okc && rc.std_off == 19800 && !rc.has_dst, "a quoted name, minutes")
+    // a v2 TZif by hand: two types (+0 and +3600), one transition at t=1000
+    var f = List[byte]()
+    for x in "TZif2".bytes() {
+        (mut f).push(x)
+    }
+    var i = 0
+    while i < 15 {
+        (mut f).push(0 as byte)
+        i += 1
+    }
+    // v1 header: isut, isstd, leap, time 0, typecnt 1, charcnt 1; then
+    // one type (6 bytes) and one abbreviation byte
+    for c in [0, 0, 0, 0, 1, 1] {
+        push32(mut f, c)
+    }
+    for x in [0, 0, 0, 0, 0, 0, 0] {
+        (mut f).push(x as byte)
+    }
+    for x in "TZif2".bytes() {
+        (mut f).push(x)
+    }
+    i = 0
+    while i < 15 {
+        (mut f).push(0 as byte)
+        i += 1
+    }
+    // v2 header: isut 0, isstd 0, leap 0, timecnt 1, typecnt 2, charcnt 1
+    for c in [0, 0, 0, 1, 2, 1] {
+        push32(mut f, c)
+    }
+    push32(mut f, 0)
+    push32(mut f, 1000)
+    (mut f).push(1 as byte)
+    push32(mut f, 0)
+    (mut f).push(0 as byte)
+    (mut f).push(0 as byte)
+    push32(mut f, 3600)
+    (mut f).push(1 as byte)
+    (mut f).push(0 as byte)
+    (mut f).push(0 as byte)
+    // the one abbreviation byte
+    (mut f).push(0 as byte)
+    for x in "\n<+01>-1\n".bytes() {
+        (mut f).push(x)
+    }
+    let (okz, zz) = clock.tzif(f)
+    assert(okz, "the zone file parses")
+    assert(clock.offset(zz, 999) == 0, "before the transition")
+    assert(clock.offset(zz, 1000) == 3600, "after it")
+    assert(clock.offset(zz, 2000000000) == 3600, "the footer's rule after the last")
+    let (okn, _) = clock.tzif(bl([84, 90]))
+    assert(!okn, "not a zone file")
+}
+
+fn push32(mut f: List[byte], v: int) {
+    (mut f).push((v / 16777216 % 256) as byte)
+    (mut f).push((v / 65536 % 256) as byte)
+    (mut f).push((v / 256 % 256) as byte)
+    (mut f).push((v % 256) as byte)
+}
+
+fn bl(xs: List[int]) -> List[byte] {
+    var r = List[byte]()
+    for x in xs {
+        (mut r).push(x as byte)
+    }
+    r
+}
