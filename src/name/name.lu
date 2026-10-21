@@ -1,0 +1,169 @@
+//! name — printing a name as tree does (C aspen `src/render/name.c`,
+//! "faithful to tree's printit()"): the default branch only (`-q`, `-N`
+//! and `-Q` are ap01's).
+//!
+//! In the C locale (one byte per character) a name goes through the BYTE
+//! branch (`src/render/name.c:20`): BEL..CR as `\a`..`\r`, a backslash
+//! and a space escaped with a backslash, the other printable ASCII bytes
+//! as they are, and every other byte as a three-digit octal escape. In a
+//! UTF-8 locale it goes through the WIDE branch (`:70`): an all-ASCII
+//! name prints its printable bytes as they are and the rest in octal; a
+//! name that decodes as UTF-8 prints each printable character as it is
+//! and each other one as the octal of its code point; a name that does
+//! not decode falls back to the byte branch.
+//!
+//! "Printable" for a code point is glibc's `iswprint` in its UTF-8
+//! locales, approximated here as: not a C0 or C1 control, not DEL, not
+//! U+2028/U+2029. Every golden and fuzzer name (é, ï, 日本語, controls,
+//! DEL) is decided the same way by both; an unassigned code point, which
+//! glibc does not count as printable, is the approximation's known edge.
+
+use out
+
+/// `\%03lo` (`src/render/name.c:12`): a backslash and the value in
+/// octal, at least three digits.
+fn octal(mut o: out.Out, v: int) {
+    var ds = List[int]()
+    var x = v
+    while x > 0 || ds.len < 3 {
+        (mut ds).push(x % 8)
+        x = x / 8
+    }
+    out.c(mut o, 92)
+    var k = ds.len - 1
+    while k >= 0 {
+        out.c(mut o, 48 + ds[k])
+        k -= 1
+    }
+}
+
+fn byte_branch(mut o: out.Out, s: List[byte], from: int, to: int) {
+    var i = from
+    while i < to {
+        let c = s[i] as int
+        if c >= 7 && c <= 13 {
+            out.c(mut o, 92)
+            out.s(mut o, "abtnvfr"[c - 7..c - 6])
+        } else if c == 92 || c == 32 {
+            out.c(mut o, 92)
+            out.c(mut o, c)
+        } else if c > 32 && c < 127 {
+            out.c(mut o, c)
+        } else {
+            octal(mut o, c)
+        }
+        i += 1
+    }
+}
+
+fn wprint(cp: int) -> bool {
+    if cp < 32 || cp >= 127 && cp < 160 {
+        return false
+    }
+    cp != 8232 && cp != 8233
+}
+
+/// The code point at `s[i]` and its length in bytes, or length 0 when
+/// the bytes there are not well-formed UTF-8 (what `mbstowcs` refuses:
+/// a stray continuation byte, an overlong form, a surrogate, past
+/// U+10FFFF, a truncated sequence).
+fn decode(s: List[byte], i: int, to: int) -> (int, int) {
+    let c = s[i] as int
+    if c < 128 {
+        return (c, 1)
+    }
+    var need = 0
+    var cp = 0
+    var lowest = 0
+    if c >= 194 && c <= 223 {
+        need = 1
+        cp = c - 192
+        lowest = 128
+    } else if c >= 224 && c <= 239 {
+        need = 2
+        cp = c - 224
+        lowest = 2048
+    } else if c >= 240 && c <= 244 {
+        need = 3
+        cp = c - 240
+        lowest = 65536
+    } else {
+        return (0, 0)
+    }
+    if i + need >= to {
+        return (0, 0)
+    }
+    var k = 1
+    while k <= need {
+        let d = s[i + k] as int
+        if d < 128 || d > 191 {
+            return (0, 0)
+        }
+        cp = cp * 64 + (d - 128)
+        k += 1
+    }
+    if cp < lowest || cp > 1114111 || cp >= 55296 && cp <= 57343 {
+        return (0, 0)
+    }
+    (cp, need + 1)
+}
+
+/// Print `s[from..to]` as tree prints a name; `utf8` is a UTF-8 locale.
+pub fn put(mut o: out.Out, s: List[byte], from: int, to: int, utf8: bool) {
+    if !utf8 {
+        byte_branch(mut o, s, from, to)
+        return
+    }
+    var ascii = true
+    var i = from
+    while i < to {
+        if s[i] as int >= 128 {
+            ascii = false
+            break
+        }
+        i += 1
+    }
+    if ascii {
+        i = from
+        while i < to {
+            let c = s[i] as int
+            if c >= 32 && c < 127 {
+                out.c(mut o, c)
+            } else {
+                octal(mut o, c)
+            }
+            i += 1
+        }
+        return
+    }
+    // decode the whole name first: one bad sequence sends it all to the
+    // byte branch (`mbstowcs` fails as a whole, `src/render/name.c:96`)
+    i = from
+    while i < to {
+        let (_, n) = decode(s, i, to)
+        if n == 0 {
+            byte_branch(mut o, s, from, to)
+            return
+        }
+        i += n
+    }
+    i = from
+    while i < to {
+        let (cp, n) = decode(s, i, to)
+        if wprint(cp) {
+            out.bytes(mut o, s, i, i + n)
+        } else {
+            octal(mut o, cp)
+        }
+        i += n
+    }
+}
+
+/// `put` for a `str` (a root path, a link target already decoded).
+pub fn put_str(mut o: out.Out, t: str, utf8: bool) {
+    var b = List[byte]()
+    for x in t.bytes() {
+        (mut b).push(x)
+    }
+    put(mut o, b, 0, b.len, utf8)
+}
