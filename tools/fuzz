@@ -9,11 +9,12 @@
 # This tool takes its tree generator (the awk program between `awk -v
 # seed=… -v root=…` and `> "$fuzz/spec"`) out of the pinned file at run
 # time, unedited, and its flag pool with every v2 flag removed (the cut is
-# lib-classify.sh's), and does what fuzz.sh does with them: build the
-# tree, add its two control-character names, run tree and aspen in C and
-# C.UTF-8, compare stdout, stderr and status after its normalisations (the
-# program name; D2's empty contents; D1's status under --du, --prune and
-# --matchdirs). Exit 1 on a difference, printing the seed to replay.
+# lib-classify.sh's: since ap01, the whole pool), and does what fuzz.sh
+# does with them: build the tree, add its two control-character names,
+# run tree and aspen in C and C.UTF-8, compare stdout, stderr and status
+# after its normalisations (the program name; D2's empty contents; D1's
+# status under --du, --prune, --matchdirs, --condense and --filelimit).
+# Exit 1 on a difference, printing the seed to replay.
 #
 # Run it in the oracle's container, as a non-root user.
 set -u
@@ -104,7 +105,7 @@ while [ "$i" -lt "$n" ]; do
         rc_ok=0
         [ "$ar" = "$br" ] && rc_ok=1
         case " $flags " in
-        *" --du "* | *" --prune "* | *" --matchdirs "*)
+        *" --du "* | *" --prune "* | *" --matchdirs "* | *" --condense "* | *" --filelimit"*)
             [ "$ar" = 2 ] && [ "$br" = 0 ] && rc_ok=1 ;;
         esac
         if [ "$ok" != 1 ] || [ "$rc_ok" != 1 ]; then
