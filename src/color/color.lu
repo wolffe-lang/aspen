@@ -1,0 +1,391 @@
+//! color — `LS_COLORS`/`TREE_COLORS` colorization (C aspen `src/color.c`,
+//! "faithful to tree's color.c"): the enable decision (`NO_COLOR`, `TERM`,
+//! `CLICOLOR`, `CLICOLOR_FORCE`, the terminal check, `-C`, `-n`), tree's
+//! built-in map verbatim (`src/color.c:26`), and `color()`'s order of
+//! matches: orphan, then the type, then for a regular file setuid,
+//! setgid, executable, the extension list newest first, `fi`.
+
+use out
+
+/// The code slots (`src/color.c:9`'s COL_* order; 6, `do`, a door, is
+/// a Solaris type no host here has).
+fn c_reset() -> int {
+    0
+}
+
+fn c_normal() -> int {
+    1
+}
+
+fn c_file() -> int {
+    2
+}
+
+fn c_dir() -> int {
+    3
+}
+
+fn c_link() -> int {
+    4
+}
+
+fn c_fifo() -> int {
+    5
+}
+
+fn c_blk() -> int {
+    7
+}
+
+fn c_chr() -> int {
+    8
+}
+
+fn c_orphan() -> int {
+    9
+}
+
+fn c_sock() -> int {
+    10
+}
+
+fn c_setuid() -> int {
+    11
+}
+
+fn c_setgid() -> int {
+    12
+}
+
+fn c_sticky_ow() -> int {
+    13
+}
+
+fn c_ow() -> int {
+    14
+}
+
+fn c_sticky() -> int {
+    15
+}
+
+fn c_exec() -> int {
+    16
+}
+
+fn c_missing() -> int {
+    17
+}
+
+fn c_left() -> int {
+    18
+}
+
+fn c_right() -> int {
+    19
+}
+
+fn c_end() -> int {
+    20
+}
+
+/// The colorizer: whether it is on, `ln=target`, the codes by slot
+/// ("" unset, `has` beside), and the extension list newest first.
+pub struct Colors {
+    enabled: bool,
+    linktarget: bool,
+    code: List[str],
+    has: List[bool],
+    exts: List[str],
+    eflg: List[str],
+}
+
+/// tree's built-in map (`src/color.c:26`), copied verbatim.
+fn default_map() -> str {
+    var t = ":no=00:rs=0:fi=00:di=01;34:ln=01;36:pi=40;33:so=01;35:bd=40;33;01:cd=40;33;01:"
+    t += "or=40;31;01:ex=01;32:*.bat=01;32:*.BAT=01;32:*.btm=01;32:*.BTM=01;32:*.cmd=01;32:"
+    t += "*.CMD=01;32:*.com=01;32:*.COM=01;32:*.dll=01;32:*.DLL=01;32:*.exe=01;32:*.EXE=01;32:"
+    t += "*.arj=01;31:*.bz2=01;31:*.deb=01;31:*.gz=01;31:*.lzh=01;31:*.rpm=01;31:*.tar=01;31:"
+    t += "*.taz=01;31:*.tb2=01;31:*.tbz2=01;31:*.tbz=01;31:*.tgz=01;31:*.tz2=01;31:*.z=01;31:"
+    t += "*.Z=01;31:*.zip=01;31:*.ZIP=01;31:*.zoo=01;31:*.asf=01;35:*.ASF=01;35:*.avi=01;35:"
+    t += "*.AVI=01;35:*.bmp=01;35:*.BMP=01;35:*.flac=01;35:*.FLAC=01;35:*.gif=01;35:*.GIF=01;35:"
+    t += "*.jpg=01;35:*.JPG=01;35:*.jpeg=01;35:*.JPEG=01;35:*.m2a=01;35:*.M2a=01;35:*.m2v=01;35:"
+    t += "*.M2V=01;35:*.mov=01;35:*.MOV=01;35:*.mp3=01;35:*.MP3=01;35:*.mpeg=01;35:*.MPEG=01;35:"
+    t += "*.mpg=01;35:*.MPG=01;35:*.ogg=01;35:*.OGG=01;35:*.ppm=01;35:*.rm=01;35:*.RM=01;35:"
+    t += "*.tga=01;35:*.TGA=01;35:*.tif=01;35:*.TIF=01;35:*.wav=01;35:*.WAV=01;35:*.wmv=01;35:"
+    t += "*.WMV=01;35:*.xbm=01;35:*.xpm=01;35:"
+    t
+}
+
+fn cmd(s: str) -> int {
+    if s.starts_with("*") {
+        return -2
+    }
+    let names = [
+        "rs",
+        "no",
+        "fi",
+        "di",
+        "ln",
+        "pi",
+        "do",
+        "bd",
+        "cd",
+        "or",
+        "so",
+        "su",
+        "sg",
+        "tw",
+        "ow",
+        "st",
+        "ex",
+        "mi",
+        "lc",
+        "rc",
+        "ec",
+    ]
+    var i = 0
+    while i < names.len {
+        if names[i] == s {
+            return i
+        }
+        i += 1
+    }
+    -1
+}
+
+fn env_present(name: str) -> bool {
+    var set = true
+    let _ = env_get(name) else |_| {
+        set = false
+        ""
+    }
+    set
+}
+
+/// Off: no codes.
+pub fn off() -> Colors {
+    var code = List[str]()
+    var has = List[bool]()
+    var i = 0
+    while i < 21 {
+        (mut code).push("")
+        (mut has).push(false)
+        i += 1
+    }
+    Colors {
+        enabled: false,
+        linktarget: false,
+        code: code,
+        has: has,
+        exts: List[str](),
+        eflg: List[str](),
+    }
+}
+
+/// The enable decision (`src/color.c:108`) for the text format; `tty`
+/// is whether the output is a terminal. Answers the map to parse, or ""
+/// and false.
+pub fn enabled(is_text: bool, forcecolor: bool, nocolor0: bool, tty: bool) -> (bool, str) {
+    if !is_text {
+        return (false, "")
+    }
+    var nocolor = nocolor0
+    let nc = env_get("NO_COLOR") else ""
+    if nc.len > 0 {
+        nocolor = true
+    }
+    if !env_present("TERM") {
+        return (false, "")
+    }
+    let cc = env_present("CLICOLOR")
+    var force = forcecolor
+    if env_present("CLICOLOR_FORCE") && !nocolor {
+        force = true
+    }
+    var have = true
+    var cs = env_get("TREE_COLORS") else |_| {
+        have = false
+        ""
+    }
+    if !have {
+        have = true
+        cs = env_get("LS_COLORS") else |_| {
+            have = false
+            ""
+        }
+    }
+    if (!have || cs.len == 0) && (force || cc) {
+        have = true
+        cs = default_map()
+    }
+    if !have || !force && (nocolor || !tty) {
+        return (false, "")
+    }
+    (true, cs)
+}
+
+/// A colorizer from map `src` (`src/color.c:79`'s parse: `:`-separated
+/// tokens, empty ones skipped as `strtok` skips them; `*ext=code` pushes
+/// an extension, newest first; `ln=target` colours a link as its target).
+pub fn parse(src: str) -> Colors {
+    var c = off()
+    c.enabled = true
+    for tok in src.split(":") {
+        if tok.len == 0 {
+            continue
+        }
+        let eq = tok.find("=") else -1
+        let key = if eq >= 0 then tok[0..eq] else tok
+        let has_val = eq >= 0
+        let val = if eq >= 0 then tok[eq + 1..] else ""
+        let col = cmd(key)
+        if col == -2 {
+            if has_val {
+                (mut c.exts).push(key[1..])
+                (mut c.eflg).push(val)
+            }
+        } else if col == 4 && has_val && val.lower() == "target" {
+            c.linktarget = true
+            c.code[4] = "01;36"
+            c.has[4] = true
+        } else if col >= 0 && has_val {
+            c.code[col] = val
+            c.has[col] = true
+        }
+    }
+    c
+}
+
+fn code_or(c: Colors, col: int, dflt: str) -> str {
+    if c.has[col] then c.code[col] else dflt
+}
+
+fn print_color(c: Colors, mut o: out.Out, col: int) -> bool {
+    if !c.has[col] {
+        return false
+    }
+    out.s(mut o, code_or(c, c_left(), "\u{1b}["))
+    out.s(mut o, c.code[col])
+    out.s(mut o, code_or(c, c_right(), "m"))
+    true
+}
+
+fn ends_with_bytes(name: List[byte], from: int, to: int, ext: str) -> bool {
+    let l = to - from
+    let xl = ext.len
+    if l > xl {
+        var i = 0
+        while i < xl {
+            if name[to - xl + i] != ext.bytes()[i] {
+                return false
+            }
+            i += 1
+        }
+        return true
+    }
+    // strcmp(name, ext): the whole name
+    if l != xl {
+        return false
+    }
+    var i = 0
+    while i < l {
+        if name[from + i] != ext.bytes()[i] {
+            return false
+        }
+        i += 1
+    }
+    true
+}
+
+/// The colour for a name (`src/color.c:185`): `kind` and `mode` are the
+/// file's type and 0o7777 bits (kind -1: no mode, `normal`), `name[from..
+/// to]` the name an extension matches. True when a code was written
+/// (the caller then calls `end`).
+pub fn apply(
+    c: Colors,
+    mut o: out.Out,
+    kind: int,
+    mode: int,
+    name: List[byte],
+    from: int,
+    to: int,
+    orphan: bool,
+    islink: bool,
+) -> bool {
+    if orphan {
+        if islink {
+            if print_color(c, mut o, c_missing()) {
+                return true
+            }
+        } else if print_color(c, mut o, c_orphan()) {
+            return true
+        }
+    }
+    let ow = mode & 2 != 0
+    if kind == 4 {
+        return print_color(c, mut o, c_fifo())
+    }
+    if kind == 6 {
+        return print_color(c, mut o, c_chr())
+    }
+    if kind == 1 {
+        if mode & 512 != 0 {
+            if ow && print_color(c, mut o, c_sticky_ow()) {
+                return true
+            }
+            if !ow && print_color(c, mut o, c_sticky()) {
+                return true
+            }
+        }
+        if ow && print_color(c, mut o, c_ow()) {
+            return true
+        }
+        return print_color(c, mut o, c_dir())
+    }
+    if kind == 7 {
+        return print_color(c, mut o, c_blk())
+    }
+    if kind == 3 {
+        return print_color(c, mut o, c_link())
+    }
+    if kind == 5 {
+        return print_color(c, mut o, c_sock())
+    }
+    if kind == 0 {
+        if mode & 2048 != 0 && print_color(c, mut o, c_setuid()) {
+            return true
+        }
+        if mode & 1024 != 0 && print_color(c, mut o, c_setgid()) {
+            return true
+        }
+        if mode & 73 != 0 && print_color(c, mut o, c_exec()) {
+            return true
+        }
+        // the list is newest first in the C (each pushed at the head)
+        var i = c.exts.len - 1
+        while i >= 0 {
+            if ends_with_bytes(name, from, to, c.exts[i]) {
+                out.s(mut o, code_or(c, c_left(), "\u{1b}["))
+                out.s(mut o, c.eflg[i])
+                out.s(mut o, code_or(c, c_right(), "m"))
+                return true
+            }
+            i -= 1
+        }
+        return print_color(c, mut o, c_file())
+    }
+    print_color(c, mut o, c_normal())
+}
+
+/// The end of a coloured name (`src/color.c:243`): `ec`, else `lc` `rs`
+/// `rc`.
+pub fn end(c: Colors, mut o: out.Out) {
+    if c.has[c_end()] {
+        out.s(mut o, c.code[c_end()])
+        return
+    }
+    out.s(mut o, code_or(c, c_left(), "\u{1b}["))
+    out.s(mut o, code_or(c, c_reset(), "0"))
+    out.s(mut o, code_or(c, c_right(), "m"))
+}
