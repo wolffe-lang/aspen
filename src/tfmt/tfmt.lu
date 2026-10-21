@@ -1,0 +1,327 @@
+//! tfmt — `--timefmt`'s formatting: C's `strftime` in the C locale, the
+//! one C aspen calls (`src/render/fileinfo.c:63`, `strftime(buf, 255,
+//! fmt, tm)`), aspen's own because wolf has none. The conversions are
+//! POSIX's and the GNU additions the manual documents (`%k %l %P %s`),
+//! with the flags `_ - 0 ^ #`, a field width, and the `E`/`O` modifiers
+//! (no effect in the C locale). A conversion it does not know is copied
+//! as written, from its `%` on.
+//!
+//! The result is capped where the C's is: `strftime` with room for 255
+//! bytes writes nothing more once the next piece would leave no room for
+//! the terminator, so the text stops at the last whole piece that fits
+//! in 254 bytes (tree shows 254 `Z`s for a 300-`Z` format, measured in
+//! the oracle's container).
+
+use clock
+
+fn days_full() -> List[str] {
+    ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+}
+
+fn months_full() -> List[str] {
+    [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ]
+}
+
+/// The bytes written so far and whether the cap was reached.
+struct Buf {
+    b: List[byte],
+    full: bool,
+}
+
+/// Add `piece` whole, or mark the buffer full (`maxsize` 255: at most 254
+/// bytes and the terminator).
+fn add(mut w: Buf, piece: List[byte]) {
+    if w.full {
+        return
+    }
+    if w.b.len + piece.len >= 255 {
+        w.full = true
+        return
+    }
+    for x in piece {
+        (mut w.b).push(x)
+    }
+}
+
+fn bytes_of(s: str) -> List[byte] {
+    var r = List[byte]()
+    for x in s.bytes() {
+        (mut r).push(x)
+    }
+    r
+}
+
+/// `s` padded on the left to `width` with `pad` (32 or 48).
+fn padded(s: List[byte], width: int, pad: int) -> List[byte] {
+    var r = List[byte]()
+    var k = width - s.len
+    while k > 0 {
+        (mut r).push(pad as byte)
+        k -= 1
+    }
+    for x in s {
+        (mut r).push(x)
+    }
+    r
+}
+
+fn digits(v: int) -> List[byte] {
+    bytes_of("{v}")
+}
+
+/// A number with its default width and pad, under the flags: `-` none,
+/// `_` spaces, `0` zeros; an explicit width wins.
+fn number(v: int, defw: int, defpad: int, flag: int, width: int) -> List[byte] {
+    let neg = v < 0
+    var d = digits(if neg then -v else v)
+    var pad = defpad
+    if flag == 95 {
+        pad = 32
+    } else if flag == 48 {
+        pad = 48
+    }
+    var w = if width >= 0 then width else defw
+    if flag == 45 {
+        w = 0
+    }
+    if neg {
+        // the sign goes before zeros, after spaces
+        if pad == 48 {
+            var r = List[byte]()
+            (mut r).push(45 as byte)
+            for x in padded(d, w - 1, 48) {
+                (mut r).push(x)
+            }
+            return r
+        }
+        var m = List[byte]()
+        (mut m).push(45 as byte)
+        for x in d {
+            (mut m).push(x)
+        }
+        d = m
+    }
+    padded(d, w, pad)
+}
+
+/// A string conversion under the flags: `^` upper case, `#` swapped
+/// (`swap` is what `#` does for this conversion), a width padded with
+/// spaces (zeros under `0`).
+fn text(s: str, flag: int, upper: bool, swap: bool, width: int) -> List[byte] {
+    var t = s
+    if upper || flag == 94 {
+        t = t.upper()
+    } else if swap {
+        t = t.lower()
+    }
+    let pad = if flag == 48 then 48 else 32
+    padded(bytes_of(t), if width >= 0 then width else 0, pad)
+}
+
+fn floordiv(a: int, b: int) -> int {
+    if a >= 0 {
+        return a / b
+    }
+    -((-a + b - 1) / b)
+}
+
+fn is_leap(y: int) -> bool {
+    y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
+}
+
+/// ISO 8601's week-based year and week (`%G`, `%V`): the week holding
+/// the year's first Thursday is week 1.
+fn iso_week(tm: clock.Tm) -> (int, int) {
+    // Monday = 0
+    let wd = (tm.wday + 6) % 7
+    var year = tm.year
+    // the day of the year of this week's Thursday
+    var thu = tm.yday - wd + 3
+    let ylen = if is_leap(year) then 366 else 365
+    if thu < 0 {
+        year -= 1
+        thu += if is_leap(year) then 366 else 365
+    } else if thu >= ylen {
+        thu -= ylen
+        year += 1
+    }
+    (year, thu / 7 + 1)
+}
+
+/// Format `tm` by `fmt` as `strftime` does in the C locale.
+pub fn format(fmt: str, tm: clock.Tm) -> List[byte] {
+    var w = Buf { b: List[byte](), full: false }
+    put(mut w, fmt, tm)
+    w.b
+}
+
+fn put(mut w: Buf, fmt: str, tm: clock.Tm) {
+    let f = fmt.bytes()
+    let n = fmt.len
+    var i = 0
+    while i < n && !w.full {
+        let c = f[i] as int
+        if c != 37 {
+            var one = List[byte]()
+            (mut one).push(f[i])
+            add(mut w, one)
+            i += 1
+            continue
+        }
+        let start = i
+        i += 1
+        var flag = 0
+        var upper = false
+        var swap = false
+        while i < n {
+            let x = f[i] as int
+            if x == 95 || x == 45 || x == 48 {
+                flag = x
+            } else if x == 94 {
+                upper = true
+            } else if x == 35 {
+                swap = true
+            } else {
+                break
+            }
+            i += 1
+        }
+        var width = -1
+        while i < n && f[i] as int >= 48 && f[i] as int <= 57 {
+            width = (if width < 0 then 0 else width) * 10 + (f[i] as int - 48)
+            i += 1
+        }
+        if i < n && (f[i] as int == 69 || f[i] as int == 79) {
+            i += 1
+        }
+        if i >= n {
+            // a lone `%` at the end: as written
+            add(mut w, bytes_of(fmt[start..n]))
+            break
+        }
+        let conv = f[i] as int
+        i += 1
+        let fl = if upper then 94 else flag
+        let piece = conversion(conv, tm, fl, swap, width)
+        if piece.len == 1 && piece[0] as int == 0 {
+            // not a conversion: copied as written
+            add(mut w, bytes_of(fmt[start..i]))
+        } else if piece.len == 1 && piece[0] as int == 1 {
+            // a composite: its parts, each a piece of its own
+            let sub = composite(conv)
+            put(mut w, sub, tm)
+        } else {
+            add(mut w, piece)
+        }
+    }
+}
+
+/// The C locale's composite conversions.
+fn composite(conv: int) -> str {
+    match conv {
+        99 => "%a %b %e %H:%M:%S %Y",
+        68 => "%m/%d/%y",
+        120 => "%m/%d/%y",
+        88 => "%H:%M:%S",
+        84 => "%H:%M:%S",
+        114 => "%I:%M:%S %p",
+        82 => "%H:%M",
+        _ => "",
+    }
+}
+
+/// One conversion's bytes: [0] when `conv` is not one, [1] for a
+/// composite (`composite` holds its parts; the flags do not reach them).
+fn conversion(conv: int, tm: clock.Tm, flag: int, swap: bool, width: int) -> List[byte] {
+    let up = flag == 94
+    let h12 = if tm.hour % 12 == 0 then 12 else tm.hour % 12
+    match conv {
+        97 => text(days_full()[tm.wday][0..3], flag, up || swap, false, width),
+        65 => text(days_full()[tm.wday], flag, up || swap, false, width),
+        98 => text(months_full()[tm.mon - 1][0..3], flag, up || swap, false, width),
+        104 => text(months_full()[tm.mon - 1][0..3], flag, up || swap, false, width),
+        66 => text(months_full()[tm.mon - 1], flag, up || swap, false, width),
+        67 => number(floordiv(tm.year, 100), 2, 48, flag, width),
+        100 => number(tm.mday, 2, 48, flag, width),
+        101 => number(tm.mday, 2, 32, flag, width),
+        70 => {
+            var r = number(tm.year, 4, 48, flag, if width >= 6 then width - 6 else -1)
+            for x in "-".bytes() {
+                (mut r).push(x)
+            }
+            for x in number(tm.mon, 2, 48, 0, -1) {
+                (mut r).push(x)
+            }
+            (mut r).push(45 as byte)
+            for x in number(tm.mday, 2, 48, 0, -1) {
+                (mut r).push(x)
+            }
+            r
+        },
+        71 => {
+            let (y, _) = iso_week(tm)
+            number(y, 1, 48, flag, width)
+        },
+        103 => {
+            let (y, _) = iso_week(tm)
+            number((y % 100 + 100) % 100, 2, 48, flag, width)
+        },
+        86 => {
+            let (_, wk) = iso_week(tm)
+            number(wk, 2, 48, flag, width)
+        },
+        72 => number(tm.hour, 2, 48, flag, width),
+        73 => number(h12, 2, 48, flag, width),
+        106 => number(tm.yday + 1, 3, 48, flag, width),
+        107 => number(tm.hour, 2, 32, flag, width),
+        108 => number(h12, 2, 32, flag, width),
+        109 => number(tm.mon, 2, 48, flag, width),
+        77 => number(tm.min, 2, 48, flag, width),
+        110 => bytes_of("\n"),
+        116 => bytes_of("\t"),
+        112 => text(if tm.hour < 12 then "AM" else "PM", flag, false, swap, width),
+        80 => text(if tm.hour < 12 then "am" else "pm", flag, false, false, width),
+        115 => number(tm.epoch, 1, 48, flag, width),
+        83 => number(tm.sec, 2, 48, flag, width),
+        117 => number(if tm.wday == 0 then 7 else tm.wday, 1, 48, flag, width),
+        119 => number(tm.wday, 1, 48, flag, width),
+        85 => number((tm.yday + 7 - tm.wday) / 7, 2, 48, flag, width),
+        87 => number((tm.yday + 7 - (tm.wday + 6) % 7) / 7, 2, 48, flag, width),
+        121 => number((tm.year % 100 + 100) % 100, 2, 48, flag, width),
+        89 => number(tm.year, 1, 48, flag, width),
+        122 => {
+            let off = tm.gmtoff
+            let sign = if off < 0 then "-" else "+"
+            let a = if off < 0 then -off else off
+            let hhmm = a / 3600 * 100 + a / 60 % 60
+            var r = bytes_of(sign)
+            for x in number(hhmm, 4, 48, 0, -1) {
+                (mut r).push(x)
+            }
+            r
+        },
+        90 => text(tm.zone, flag, up, swap, width),
+        37 => bytes_of("%"),
+        99 => [1 as byte],
+        68 => [1 as byte],
+        120 => [1 as byte],
+        88 => [1 as byte],
+        84 => [1 as byte],
+        114 => [1 as byte],
+        82 => [1 as byte],
+        _ => [0 as byte],
+    }
+}
