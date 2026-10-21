@@ -1,0 +1,51 @@
+#!/bin/sh
+# build — compile aspen on one tier or both (lope's tools/build shape).
+#
+# The program is `src/aspen.lu` (marked `//! member: false`) over the
+# modules under `src/`, with the manifest `src/wolf.pkg` beside it.
+#   tools/build [--native|--release|--all|--static]
+#   --native   the fast default backend  -> target/native/aspen
+#   --release  LLVM with the mid-end on  -> target/release/aspen
+#   --all      both (the default)
+#   --static   the release tier linked with `cc -static` (linux)
+#                                        -> target/static/aspen
+#              the shape PAX runs (pax's tools/mkpelt, lope's
+#              tools/mkstatic): wolf has no `--static`, so a `cc` that
+#              adds the flag is put first on PATH for the link. Build it
+#              on a baseline x86-64 glibc (the CI runner's Ubuntu, an
+#              Ubuntu container on kasumi), never on kasumi's CachyOS glibc.
+# Every build denies warnings.
+set -eu
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+export ASPEN_ROOT
+cd "$ASPEN_ROOT"
+. tools/lib-toolchain.sh
+
+tiers="native release"
+case "${1:-}" in
+--native) tiers=native ;;
+--release) tiers=release ;;
+--all | "") ;;
+--static) tiers=static ;;
+*)
+    echo "build: unknown option $1" >&2
+    exit 2
+    ;;
+esac
+
+for tier in $tiers; do
+    mkdir -p "target/$tier"
+    if [ "$tier" = static ]; then
+        real=$(command -v cc)
+        mkdir -p target/static/bin
+        printf '#!/bin/sh\nexec %s -static "$@"\n' "$real" >target/static/bin/cc
+        chmod +x target/static/bin/cc
+        PATH="$ASPEN_ROOT/target/static/bin:$PATH" \
+            "$WOLF" build --release --no-cache --deny-warnings src/aspen.lu -o target/static/aspen
+    elif [ "$tier" = release ]; then
+        "$WOLF" build --release --deny-warnings src/aspen.lu -o "target/$tier/aspen"
+    else
+        "$WOLF" build --deny-warnings src/aspen.lu -o "target/$tier/aspen"
+    fi
+    echo "build: target/$tier/aspen"
+done
