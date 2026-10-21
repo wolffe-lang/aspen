@@ -6,19 +6,26 @@
 #
 #   tools/in-container COMMAND...
 #
-# podman (kasumi) or docker (CI). The image is tagged by the
+# podman (kasumi) or docker (CI, ASPEN_ENGINE=docker). The image is tagged by the
 # Containerfile's own digest, so an edit to it builds a new one.
 set -eu
 ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
-if command -v podman >/dev/null 2>&1; then
-    eng=podman
+# ASPEN_ENGINE picks one (CI sets docker: its runner has both)
+eng=${ASPEN_ENGINE:-}
+if [ -z "$eng" ]; then
+    if command -v podman >/dev/null 2>&1; then
+        eng=podman
+    elif command -v docker >/dev/null 2>&1; then
+        eng=docker
+    else
+        echo "in-container: no podman or docker" >&2
+        exit 2
+    fi
+fi
+if [ "$eng" = podman ]; then
     as_user="--userns=keep-id"
-elif command -v docker >/dev/null 2>&1; then
-    eng=docker
-    as_user="--user $(id -u):$(id -g)"
 else
-    echo "in-container: no podman or docker" >&2
-    exit 2
+    as_user="--user $(id -u):$(id -g)"
 fi
 sum=$( (sha256sum "$ASPEN_ROOT/ci/oracle.Containerfile" 2>/dev/null || shasum -a 256 "$ASPEN_ROOT/ci/oracle.Containerfile") | cut -c1-12)
 image=localhost/aspen-oracle:$sum
