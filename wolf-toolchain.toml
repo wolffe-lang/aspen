@@ -26,16 +26,28 @@
 # (`std/STD-REV`); `tools/fetch-toolchain` stages the std pin below in
 # its place and says so.
 #
+# ## The bump: wolf 0.2.34, lupin and wolf-std unchanged (ap01, 2026-10-21)
+#
+# `gh release list -R wolffe-lang/wolf-lang` at ap01's start: v0.2.34 is
+# the latest (2026-10-21), and it brings `fs_realpath`, which
+# `--hyperlink` needs (C aspen's realpath, `src/render/unix.c:231`).
+# Digests read twice from the release API (release 419552903), equal
+# both times, and the linux x86-64 archive hashed twice after download on
+# kasumi. The tag object: v0.2.34 `38ab81cb` -> `9da7bdcf`. Its
+# `--version` line 2 names lupin 0.1.55 as its pairing, the pin below,
+# and its archive bundles wolf-std `e036bec`, the std pin below: the
+# driver, the interpreter and the std agree for the first time.
+#
 # Windows is not pinned: aspen lists POSIX directory trees.
 
 [wolf]
-version = "0.2.33"
+version = "0.2.34"
 repo = "wolffe-lang/wolf-lang"
-rev = "85dab5d7e597680d6fd7034f1d7ed2acb9a92f97"
-version_line = "wolf 0.2.33 (wolfgang, pin 85dab5d)"
-aarch64-apple-darwin = "9152dbd136d858539100088394cbaa97cf23f7ddd2816512cd9b48c70a9f40eb"
-x86_64-unknown-linux-gnu = "4f955e8dfe6eaafa441903eeba43c009c4ec2b45a8da09fe13431e8b12340af8"
-aarch64-unknown-linux-gnu = "24cde9e4668d17448527f774db602d93a348d285c2219a1edff791519530a2ac"
+rev = "9da7bdcf2aea9adf48df6570bedc58e16e9ef853"
+version_line = "wolf 0.2.34 (wolfgang, pin 9da7bdc)"
+aarch64-apple-darwin = "29c8331f5d188b00c4580bc7677b1238891c5734d00b0512df10c60eab236ee3"
+x86_64-unknown-linux-gnu = "88a9dd3da1c9a0e38c08eb6e2de9c1ef04d1ed93dcf51024d8dbbb76890c1821"
+aarch64-unknown-linux-gnu = "ca5cadf936dc0d4396e92733fc65e953d549f3b61f0aa354e7be2e78ea8c3ad0"
 
 [lupin]
 version = "0.1.55"
