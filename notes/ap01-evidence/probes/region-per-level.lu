@@ -1,0 +1,39 @@
+//! member: false
+//! A probe: what a region per level can hold and store.
+
+struct Acc {
+    buf: List[byte],
+    n: int,
+    names: List[str],
+}
+
+fn level(mut a: Acc, k: int) {
+    var tmp = List[List[byte]]()
+    var i = 0
+    while i < 1000 {
+        var row = List[byte]()
+        (mut row).push((i % 256) as byte)
+        (mut tmp).push(row)
+        i += 1
+    }
+    for r in tmp {
+        (mut a.buf).push(r[0])
+    }
+    a.n += tmp.len
+    if k == 0 {
+        a.n += 1
+    }
+}
+
+fn main() -> int {
+    var a = Acc { buf: List[byte](), n: 0, names: List[str]() }
+    var k = 0
+    while k < 200 {
+        region lv {
+            level(mut a, k)
+        }
+        k += 1
+    }
+    print("{a.n} {a.buf.len} {a.names.len}")
+    0
+}

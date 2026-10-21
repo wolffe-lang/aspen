@@ -1,0 +1,45 @@
+//! member: false
+//! A probe: what one scope of four spawned tasks costs, with and without
+//! the stat work.
+use std.time
+
+fn main() -> int {
+    let args = env_args()
+    var n = 400
+    if args.len > 0 {
+        n = args[0].to_int() else 400
+    }
+    let dir = if args.len > 1 then args[1] else "/tmp"
+    let t0 = time.unix_ms()
+    var k = 0
+    while k < n {
+        let ch = channel[int](4)
+        scope s {
+            var c = 0
+            while c < 4 {
+                let id = c
+                s.spawn(fn() {
+                    ch.send(id) else |_| {}
+                })
+                c += 1
+            }
+            var got = 0
+            while got < 4 {
+                let _ = ch.recv() else -1
+                got += 1
+            }
+        }
+        k += 1
+    }
+    let t1 = time.unix_ms()
+    var m = 0
+    var i = 0
+    while i < 100000 {
+        let w = fs_lstat(dir) else List[int]()
+        m += w.len
+        i += 1
+    }
+    let t2 = time.unix_ms()
+    eprint("{n} scopes of 4 tasks: {t1 - t0} ms; 100000 lstats: {t2 - t1} ms ({m})")
+    0
+}

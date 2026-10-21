@@ -1,0 +1,47 @@
+//! member: false
+//! A probe: a first-class region for what outlives a level.
+
+struct Acc {
+    buf: List[byte],
+    n: int,
+    names: List[str],
+}
+
+fn level(mut a: Acc, keep: region, k: int) {
+    var tmp = List[List[byte]]()
+    var i = 0
+    while i < 1000 {
+        var row = List[byte]()
+        (mut row).push((i % 256) as byte)
+        (mut tmp).push(row)
+        i += 1
+    }
+    for r in tmp {
+        in keep {
+            (mut a.buf).push(r[0])
+        }
+    }
+    a.n += tmp.len
+    if k == 0 {
+        in keep {
+            (mut a.names).push("level {k}")
+        }
+    }
+}
+
+fn main() -> int {
+    let keep = region()
+    var a = Acc { buf: List[byte](), n: 0, names: List[str]() }
+    in keep {
+        a = Acc { buf: List[byte](), n: 0, names: List[str]() }
+    }
+    var k = 0
+    while k < 200 {
+        region lv {
+            level(mut a, keep, k)
+        }
+        k += 1
+    }
+    print("{a.n} {a.buf.len} {a.names.len}")
+    0
+}
