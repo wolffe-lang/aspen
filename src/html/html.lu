@@ -1,0 +1,394 @@
+//! html — `-H baseHREF` (C aspen `src/render/html.c`, "faithful to
+//! tree's html.c"): a line renderer like the text one, each entry an
+//! `<a>` whose `href` is the base and the entry's path URL-encoded
+//! (DEVIATION D3: the real byte), `-T`'s title, `--nolinks`, `-C`'s CSS
+//! classes, `--info` in the `title` attribute, `--hintro`/`--houtro` in
+//! place of the head and the foot; the default foot is aspen's own
+//! VERSION line (A7).
+
+use ent
+use info
+use lines
+use opts
+use out
+use text
+
+/// The HTML renderer's state.
+pub struct Html {
+    o: out.Out,
+    utf8: bool,
+    ln: lines.Lines,
+    has_cs: bool,
+    cs: str,
+    last: List[bool],
+    dirlen: int,
+    cols: info.Cols,
+}
+
+/// A renderer writing to descriptor `fd`; `cs` the charset `has_cs`
+/// says there is (the meta charset).
+pub fn new(
+    fd: int,
+    o: opts.Opts,
+    utf8: bool,
+    take ln: lines.Lines,
+    has_cs: bool,
+    cs: str,
+    take cols: info.Cols,
+) -> Html {
+    let _ = o.format
+    Html {
+        o: out.to_fd(fd),
+        utf8: utf8,
+        ln: ln,
+        has_cs: has_cs,
+        cs: cs,
+        last: List[bool](),
+        dirlen: 0,
+        cols: cols,
+    }
+}
+
+fn bs(s: str) -> List[byte] {
+    var b = List[byte]()
+    for x in s.bytes() {
+        (mut b).push(x)
+    }
+    b
+}
+
+/// `&lt;`, `&gt;`, `&amp;`, `&quot;` for the four, every other byte as
+/// it is (`src/render/escape.c:8`).
+pub fn encode(mut o: out.Out, s: List[byte], from: int, to: int) {
+    var i = from
+    while i < to {
+        let c = s[i] as int
+        if c == 60 {
+            out.s(mut o, "&lt;")
+        } else if c == 62 {
+            out.s(mut o, "&gt;")
+        } else if c == 38 {
+            out.s(mut o, "&amp;")
+        } else if c == 34 {
+            out.s(mut o, "&quot;")
+        } else {
+            (mut o.buf).push(s[i])
+        }
+        i += 1
+    }
+}
+
+fn cat_file(mut h: Html, path: str) {
+    let b = fs_read_bytes(path) else |_| {
+        return
+    }
+    out.bytes(mut h.o, b, 0, b.len)
+}
+
+/// The document's head (`src/render/html.c:202`), or `--hintro`'s file.
+pub fn begin(mut h: Html, o: opts.Opts) {
+    if o.has_hintro {
+        cat_file(mut h, o.hintro)
+        return
+    }
+    let title = if o.has_title then o.title else "Directory Tree"
+    out.s(mut h.o, "<!DOCTYPE html>\n<html>\n<head>\n")
+    out.s(mut h.o, " <meta http-equiv=\"Content-Type\" content=\"text/html; charset=")
+    out.s(mut h.o, if h.has_cs then h.cs else "iso-8859-1")
+    out.s(mut h.o, "\">\n")
+    out.s(mut h.o, " <meta name=\"Author\" content=\"Made by 'aspen'\">\n")
+    out.s(mut h.o, " <meta name=\"GENERATOR\" content=\"aspen v{opts.version()}\">\n")
+    out.s(mut h.o, " <title>")
+    out.s(mut h.o, title)
+    out.s(mut h.o, "</title>\n")
+    out.s(mut h.o, " <style type=\"text/css\">\n")
+    out.s(mut h.o, "  BODY {{ font-family : monospace, sans-serif;  color: black;}}\n")
+    out.s(
+        mut h.o,
+        "  P {{ font-family : monospace, sans-serif; color: black; margin:0px; padding: 0px;}}\n",
+    )
+    out.s(mut h.o, "  A:visited {{ text-decoration : none; margin : 0px; padding : 0px;}}\n")
+    out.s(mut h.o, "  A:link    {{ text-decoration : none; margin : 0px; padding : 0px;}}\n")
+    out.s(
+        mut h.o,
+        "  A:hover   {{ text-decoration: underline; background-color : yellow; margin : 0px; padding : 0px;}}\n",
+    )
+    out.s(mut h.o, "  A:active  {{ margin : 0px; padding : 0px;}}\n")
+    out.s(mut h.o, "  .VERSION {{ font-size: small; font-family : arial, sans-serif; }}\n")
+    out.s(mut h.o, "  .NORM  {{ color: black;  }}\n")
+    out.s(mut h.o, "  .FIFO  {{ color: purple; }}\n")
+    out.s(mut h.o, "  .CHAR  {{ color: yellow; }}\n")
+    out.s(mut h.o, "  .DIR   {{ color: blue;   }}\n")
+    out.s(mut h.o, "  .BLOCK {{ color: yellow; }}\n")
+    out.s(mut h.o, "  .LINK  {{ color: aqua;   }}\n")
+    out.s(mut h.o, "  .SOCK  {{ color: fuchsia;}}\n")
+    out.s(mut h.o, "  .EXEC  {{ color: green;  }}\n")
+    out.s(mut h.o, " </style>\n</head>\n<body>\n\t<h1>")
+    out.s(mut h.o, title)
+    out.s(mut h.o, "</h1><p>\n")
+}
+
+/// The foot (`src/render/html.c:249`), or `--houtro`'s file; the flush.
+pub fn end(mut h: Html, o: opts.Opts) {
+    if o.has_houtro {
+        cat_file(mut h, o.houtro)
+    } else {
+        out.s(mut h.o, "\t<hr>\n\t<p class=\"VERSION\">\n\t\t")
+        out.s(mut h.o, "aspen v{opts.version()}\n")
+        out.s(mut h.o, "\t</p>\n</body>\n</html>\n")
+    }
+    out.flush(mut h.o)
+}
+
+/// tree's HTML indent (`src/render/html.c:75`): a tab, then per ancestor
+/// its glyph (`&nbsp;` three times, fewer under `--compress`, for a
+/// finished one) and a `&nbsp;`, then the connector and a `&nbsp;`.
+fn indent(mut h: Html, o: opts.Opts, depth: int, is_last: bool) {
+    let sp = ["&nbsp;&nbsp;&nbsp;", "&nbsp;&nbsp;", "&nbsp;"]
+    let cl = o.compress_indent
+    let rs = o.remove_space
+    out.c(mut h.o, 9)
+    var i = 1
+    while i < depth {
+        let last = i < h.last.len && h.last[i]
+        if last {
+            out.s(mut h.o, sp[cl])
+        } else {
+            out.bytes(mut h.o, h.ln.vert[cl], 0, h.ln.vert[cl].len)
+        }
+        if !rs {
+            out.s(mut h.o, "&nbsp;")
+        }
+        i += 1
+    }
+    if is_last {
+        out.bytes(mut h.o, h.ln.corner[cl], 0, h.ln.corner[cl].len)
+    } else {
+        out.bytes(mut h.o, h.ln.vleft[cl], 0, h.ln.vleft[cl].len)
+    }
+    if !rs {
+        out.s(mut h.o, "&nbsp;")
+    }
+    while h.last.len <= depth {
+        (mut h.last).push(false)
+    }
+    h.last[depth] = is_last
+}
+
+/// The metadata column with its spaces as `&nbsp;` and four after it
+/// (`html_print` and `emit_info`, `src/render/html.c:97`).
+fn meta(mut h: Html, o: opts.Opts, st: ent.Meta, has: bool) {
+    if !has {
+        return
+    }
+    let f = info.fill(o, mut h.cols, st)
+    if f.len == 0 || f[0] as int != 91 {
+        return
+    }
+    for x in f {
+        if x as int == 32 {
+            out.s(mut h.o, "&nbsp;")
+        } else {
+            (mut h.o.buf).push(x)
+        }
+    }
+    out.s(mut h.o, "&nbsp;&nbsp;&nbsp;&nbsp;")
+}
+
+fn cls(kind: int, exe: bool) -> str {
+    if kind == 1 {
+        return "DIR"
+    }
+    if exe {
+        return "EXEC"
+    }
+    if kind == 4 {
+        return "FIFO"
+    }
+    if kind == 5 {
+        return "SOCK"
+    }
+    "NORM"
+}
+
+/// The `<a>` of an entry (`src/render/html.c:137`): `dir[0..dirlen]` its
+/// directory, `file[ffrom..fto]` the name it shows; `rd` 0 a plain entry,
+/// 1 a directory (a trailing `/`), 2 or more a `-R` boundary (the href
+/// names its `00Tree.html`).
+fn anchor(
+    mut h: Html,
+    o: opts.Opts,
+    kind: int,
+    exe: bool,
+    infos: List[List[byte]],
+    has_info: bool,
+    dir: List[byte],
+    dirlen: int,
+    file: List[byte],
+    ffrom: int,
+    fto: int,
+    isdir: bool,
+    rd: int,
+) {
+    out.s(mut h.o, "<a")
+    if o.forcecolor {
+        out.s(mut h.o, " class=\"")
+        out.s(mut h.o, cls(if isdir then 1 else kind, exe))
+        out.c(mut h.o, 34)
+    }
+    if has_info {
+        out.s(mut h.o, " title=\"")
+        var i = 0
+        while i < infos.len {
+            encode(mut h.o, infos[i], 0, infos[i].len)
+            if i + 1 < infos.len {
+                out.c(mut h.o, 10)
+            }
+            i += 1
+        }
+        out.c(mut h.o, 34)
+    }
+    if !o.nolinks {
+        out.s(mut h.o, " href=\"")
+        out.s(mut h.o, if o.has_host then o.host else "")
+        let off = if o.htmloffset then (if dirlen >= h.dirlen then h.dirlen else 0) else 0
+        let _ = text.url_encode(mut h.o, dir, off, dirlen)
+        // the directory against the name, by length and bytes
+        var same = fto - ffrom == dirlen
+        if same {
+            var k = 0
+            while k < dirlen {
+                if dir[k] != file[ffrom + k] {
+                    same = false
+                    break
+                }
+                k += 1
+            }
+        }
+        if !same {
+            if dirlen == 0 || dir[dirlen - 1] as int != 47 {
+                out.c(mut h.o, 47)
+            }
+            let _ = text.url_encode(mut h.o, file, ffrom, fto)
+        }
+        if rd > 1 {
+            out.s(mut h.o, "/00Tree.html")
+        } else if isdir && rd < 2 {
+            out.c(mut h.o, 47)
+        }
+        out.c(mut h.o, 34)
+    }
+    out.c(mut h.o, 62)
+    encode(mut h.o, file, ffrom, fto)
+    out.s(mut h.o, "</a>")
+}
+
+/// The root line (`src/render/html.c:269`).
+pub fn root(mut h: Html, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st: bool) {
+    let failed = err.len > 0
+    let pb = bs(path)
+    h.dirlen = pb.len
+    out.c(mut h.o, 9)
+    meta(mut h, o, st, has_st)
+    if !failed || has_st {
+        let isdir = if has_st then st.kind == 1 else true
+        let none = List[List[byte]]()
+        anchor(mut h, o, 1, false, none, false, pb, pb.len, pb, 0, pb.len, isdir, 1)
+    } else {
+        out.s(mut h.o, "<a>")
+        encode(mut h.o, pb, 0, pb.len)
+        out.s(mut h.o, "</a>")
+    }
+    if failed {
+        out.s(mut h.o, "  [")
+        out.s(mut h.o, err)
+        out.c(mut h.o, 93)
+    }
+    out.s(mut h.o, "<br>\n")
+    out.maybe(mut h.o)
+}
+
+/// One entry (`src/render/html.c:302`).
+pub fn entry(
+    mut h: Html,
+    o: opts.Opts,
+    a: ent.Arena,
+    e: ent.Ent,
+    path: str,
+    depth: int,
+    is_last: bool,
+    rd: int,
+) {
+    let dl = ent.dir_like(e)
+    if o.metafirst {
+        meta(mut h, o, e.st, e.has_st)
+        if !o.noindent {
+            indent(mut h, o, depth, is_last)
+        }
+    } else {
+        if !o.noindent {
+            indent(mut h, o, depth, is_last)
+        }
+        meta(mut h, o, e.st, e.has_st)
+    }
+    let pb = bs(path)
+    let cn = e.cname >= 0
+    let nlen = if cn then a.cnames[e.cname].len - 1 else e.nm.len - 1
+    let dirlen = pb.len - nlen - 1
+    let exe = e.flags & ent.f_exec() != 0
+    let none = List[List[byte]]()
+    let infos = if e.info >= 0 then a.infos[e.info] else none
+    let hi = e.info >= 0
+    if o.fullpath {
+        anchor(mut h, o, e.kind, exe, infos, hi, pb, dirlen, pb, 0, pb.len, dl, rd)
+    } else if cn {
+        anchor(
+            mut h,
+            o,
+            e.kind,
+            exe,
+            infos,
+            hi,
+            pb,
+            dirlen,
+            a.cnames[e.cname],
+            1,
+            a.cnames[e.cname].len,
+            dl,
+            rd,
+        )
+    } else {
+        anchor(mut h, o, e.kind, exe, infos, hi, pb, dirlen, e.nm, 1, e.nm.len, dl, rd)
+    }
+    out.maybe(mut h.o)
+}
+
+/// `  [msg]`.
+pub fn error(mut h: Html, msg: str) {
+    out.s(mut h.o, "  [")
+    out.s(mut h.o, msg)
+    out.c(mut h.o, 93)
+}
+
+/// End the current line.
+pub fn newline(mut h: Html) {
+    out.s(mut h.o, "<br>\n")
+    out.maybe(mut h.o)
+}
+
+/// The report (`src/render/html.c:316`).
+pub fn report(mut h: Html, o: opts.Opts, dirs: int, files: int, size: int) {
+    out.s(mut h.o, "<br><br><p>\n\n")
+    if o.duflag {
+        info.put_psize(mut h.o, o.humanflag, o.siflag, size)
+        out.s(mut h.o, if o.humanflag || o.siflag then " used in " else " bytes used in ")
+    }
+    let d = if dirs == 1 then "directory" else "directories"
+    if o.dirsonly {
+        out.s(mut h.o, "{dirs} {d}\n")
+    } else {
+        let f = if files == 1 then "file" else "files"
+        out.s(mut h.o, "{dirs} {d}, {files} {f}\n")
+    }
+    out.s(mut h.o, "\n</p>\n")
+}
