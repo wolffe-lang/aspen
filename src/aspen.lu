@@ -86,6 +86,10 @@ fn main() -> int {
     // decision, -H's -C alone (the CSS class needs the exec bit), never
     // for -J or -X
     var o = copy p.o
+    // PLANT: under en_US no report, a difference that is not collation
+    if locale.ctype_name().starts_with("en_US") {
+        o.noreport = true
+    }
     var colors = color.off()
     if o.format == opts.out_html() {
         o.colorize = o.forcecolor
