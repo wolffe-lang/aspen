@@ -177,11 +177,11 @@ fn indent(mut h: Html, o: opts.Opts, depth: int, is_last: bool) {
 
 /// The metadata column with its spaces as `&nbsp;` and four after it
 /// (`html_print` and `emit_info`, `src/render/html.c:97`).
-fn meta(mut h: Html, o: opts.Opts, st: ent.Meta, has: bool) {
+fn meta(mut h: Html, o: opts.Opts, st: ent.Meta, ids: ent.Ids, has: bool) {
     if !has {
         return
     }
-    let f = info.fill(o, mut h.cols, st)
+    let f = info.fill(o, mut h.cols, st, ids)
     if f.len == 0 || f[0] as int != 91 {
         return
     }
@@ -288,12 +288,20 @@ fn anchor(
 }
 
 /// The root line (`src/render/html.c:269`).
-pub fn root(mut h: Html, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st: bool) {
+pub fn root(
+    mut h: Html,
+    o: opts.Opts,
+    path: str,
+    err: str,
+    st: ent.Meta,
+    ids: ent.Ids,
+    has_st: bool,
+) {
     let failed = err.len > 0
     let pb = bs(path)
     h.dirlen = pb.len
     out.c(mut h.o, 9)
-    meta(mut h, o, st, has_st)
+    meta(mut h, o, st, ids, has_st)
     // the root is classed and typed by its lstat (tree: a symlink root
     // gets no trailing "/" and its link's mode; C aspen types it a
     // directory unless a flag stat'ed it, `src/render/html.c:280`)
@@ -328,8 +336,9 @@ pub fn entry(
     rd: int,
 ) {
     let dl = ent.dir_like(e)
+    let eids = ent.ids(a, e)
     if o.metafirst {
-        meta(mut h, o, e.st, e.has_st)
+        meta(mut h, o, e.st, eids, e.has_st)
         if !o.noindent {
             indent(mut h, o, depth, is_last)
         }
@@ -337,42 +346,30 @@ pub fn entry(
         if !o.noindent {
             indent(mut h, o, depth, is_last)
         }
-        meta(mut h, o, e.st, e.has_st)
+        meta(mut h, o, e.st, eids, e.has_st)
     }
     let pb = bs(path)
-    let cn = e.cname >= 0
-    let nlen = if cn then a.cnames[e.cname].len - 1 else e.nm.len - 1
+    let ci = ent.cname_of(a, e)
+    let cn = ci >= 0
+    let nlen = if cn then a.cnames[ci].len - 1 else e.nm.len - 1
     let dirlen = pb.len - nlen - 1
     // the class reads what a link points to
     var ck = e.kind
     var cm = if e.has_st then e.st.mode else 0
     if e.lnk >= 0 {
         ck = if e.flags & ent.f_orphan() != 0 then 0 else e.ltype
-        cm = if e.flags & ent.f_orphan() != 0 then 0 else e.lmode
+        cm = if e.flags & ent.f_orphan() != 0 then 0 else ent.lmode(a, e)
     } else if e.flags & ent.f_exec() != 0 {
         cm = cm | 73
     }
     let none = List[List[byte]]()
-    let infos = if e.info >= 0 then a.infos[e.info] else none
-    let hi = e.info >= 0
+    let ii = ent.info_of(a, e)
+    let infos = if ii >= 0 then a.infos[ii] else none
+    let hi = ii >= 0
     if o.fullpath {
         anchor(mut h, o, ck, cm, infos, hi, pb, dirlen, pb, 0, pb.len, dl, rd)
     } else if cn {
-        anchor(
-            mut h,
-            o,
-            ck,
-            cm,
-            infos,
-            hi,
-            pb,
-            dirlen,
-            a.cnames[e.cname],
-            1,
-            a.cnames[e.cname].len,
-            dl,
-            rd,
-        )
+        anchor(mut h, o, ck, cm, infos, hi, pb, dirlen, a.cnames[ci], 1, a.cnames[ci].len, dl, rd)
     } else {
         anchor(mut h, o, ck, cm, infos, hi, pb, dirlen, e.nm, 1, e.nm.len, dl, rd)
     }

@@ -209,14 +209,39 @@ fn root_ftype(o: opts.Opts, st: ent.Meta) -> int {
     0
 }
 
-fn meta(mut t: Text, o: opts.Opts, st: ent.Meta, has: bool) {
+fn meta(mut t: Text, o: opts.Opts, st: ent.Meta, ids: ent.Ids, has: bool) {
     if has {
-        info.put_fill(mut t.o, o, mut t.cols, st, true)
+        info.put_fill(mut t.o, o, mut t.cols, st, ids, true)
     }
 }
 
+/// An entry's column: the bytes a stat task formatted, or formatted here.
+fn entry_meta(mut t: Text, o: opts.Opts, a: ent.Arena, e: ent.Ent) {
+    if e.col >= 0 {
+        let full: int = 17592186044416
+        let mega: int = 1048576
+        let tx = a.coltxt[e.col / full]
+        var i = e.col / mega % 16777216
+        let end = i + e.col % mega
+        while i < end {
+            (mut t.o.buf).push(tx.bytes()[i])
+            i += 1
+        }
+        return
+    }
+    meta(mut t, o, e.st, ent.ids(a, e), e.has_st)
+}
+
 /// The root line (`src/render/unix.c:225`).
-pub fn root(mut t: Text, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st: bool) {
+pub fn root(
+    mut t: Text,
+    o: opts.Opts,
+    path: str,
+    err: str,
+    st: ent.Meta,
+    ids: ent.Ids,
+    has_st: bool,
+) {
     if t.debug {
         return
     }
@@ -230,7 +255,7 @@ pub fn root(mut t: Text, o: opts.Opts, path: str, err: str, st: ent.Meta, has_st
         t.realbase = rp
         t.pathoffset = if rp.len > 0 then pb.len else 0
     }
-    meta(mut t, o, st, has_st)
+    meta(mut t, o, st, ids, has_st)
     // tree links any root that exists, one it could not open too
     // (measured; C aspen only an opened one, `src/render/unix.c:238`)
     let linked = t.hyper && (!failed || has_st)
@@ -364,7 +389,7 @@ pub fn entry(
         return
     }
     if o.metafirst {
-        meta(mut t, o, e.st, e.has_st)
+        entry_meta(mut t, o, a, e)
         if !o.noindent {
             indent(mut t, depth, is_last)
         }
@@ -372,10 +397,11 @@ pub fn entry(
         if !o.noindent {
             indent(mut t, depth, is_last)
         }
-        meta(mut t, o, e.st, e.has_st)
+        entry_meta(mut t, o, a, e)
     }
-    let cn = e.cname >= 0
-    let nlen = if cn then a.cnames[e.cname].len - 1 else e.nm.len - 1
+    let ci = ent.cname_of(a, e)
+    let cn = ci >= 0
+    let nlen = if cn then a.cnames[ci].len - 1 else e.nm.len - 1
     var pb = List[byte]()
     var dirlen = 0
     if t.hyper || o.fullpath {
@@ -384,7 +410,7 @@ pub fn entry(
     }
     if t.hyper {
         if cn {
-            open_link(mut t, pb, dirlen, a.cnames[e.cname], 1, a.cnames[e.cname].len)
+            open_link(mut t, pb, dirlen, a.cnames[ci], 1, a.cnames[ci].len)
         } else {
             open_link(mut t, pb, dirlen, e.nm, 1, e.nm.len)
         }
@@ -395,7 +421,7 @@ pub fn entry(
         var mode = if e.has_st then e.st.mode else 0
         if e.lnk >= 0 && t.colors.linktarget {
             kind = if e.flags & ent.f_orphan() != 0 then -1 else e.ltype
-            mode = e.lmode
+            mode = ent.lmode(a, e)
         }
         let orphan = e.flags & ent.f_orphan() != 0
         if cn {
@@ -404,9 +430,9 @@ pub fn entry(
                 mut t.o,
                 kind,
                 mode,
-                a.cnames[e.cname],
+                a.cnames[ci],
                 1,
-                a.cnames[e.cname].len,
+                a.cnames[ci].len,
                 orphan,
                 false,
             )
@@ -417,7 +443,7 @@ pub fn entry(
     if o.fullpath {
         name.put_flags(mut t.o, pb, 0, pb.len, t.utf8, t.np)
     } else if cn {
-        name.put_flags(mut t.o, a.cnames[e.cname], 1, a.cnames[e.cname].len, t.utf8, t.np)
+        name.put_flags(mut t.o, a.cnames[ci], 1, a.cnames[ci].len, t.utf8, t.np)
     } else {
         name.put_flags(mut t.o, e.nm, 1, e.nm.len, t.utf8, t.np)
     }
@@ -442,7 +468,7 @@ pub fn entry(
         if t.colors.enabled {
             let orphan = e.flags & ent.f_orphan() != 0
             let lk = if orphan then -1 else e.ltype
-            lc = color.apply(t.colors, mut t.o, lk, e.lmode, lnk, 0, lnk.len, orphan, true)
+            lc = color.apply(t.colors, mut t.o, lk, ent.lmode(a, e), lnk, 0, lnk.len, orphan, true)
         }
         name.put_flags(mut t.o, lnk, 0, lnk.len, t.utf8, t.np)
         if lc {
