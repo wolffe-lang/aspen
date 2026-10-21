@@ -1,0 +1,120 @@
+#!/bin/sh
+# fuzz — C aspen's differential fuzzer (tests/golden/fuzz.sh at aspen.pin),
+# its seeded random trees and its normalisations, over v1's flags.
+#
+#   tools/fuzz [--bin ASPEN] [--c-aspen DIR] [--n N] [--seed S]
+#
+# fuzz.sh samples 1–4 flags per tree from a pool that holds v2 flags too,
+# and stops at ten differences, so it cannot be pointed at v1 unedited.
+# This tool takes its tree generator (the awk program between `awk -v
+# seed=… -v root=…` and `> "$fuzz/spec"`) out of the pinned file at run
+# time, unedited, and its flag pool with every v2 flag removed (the cut is
+# lib-classify.sh's), and does what fuzz.sh does with them: build the
+# tree, add its two control-character names, run tree and aspen in C and
+# C.UTF-8, compare stdout, stderr and status after its normalisations (the
+# program name; D2's empty contents; D1's status under --du, --prune and
+# --matchdirs). Exit 1 on a difference, printing the seed to replay.
+#
+# Run it in the oracle's container, as a non-root user.
+set -u
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+bin=$ASPEN_ROOT/target/release/aspen
+csrc=$ASPEN_ROOT/.oracle/c-aspen
+n=60
+base=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --bin) bin=$2; shift 2 ;;
+    --c-aspen) csrc=$2; shift 2 ;;
+    --n) n=$2; shift 2 ;;
+    --seed) base=$2; shift 2 ;;
+    *) echo "fuzz: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+case "$bin" in /*) ;; *) bin=$(pwd)/$bin ;; esac
+[ -x "$bin" ] || { echo "fuzz: no aspen at $bin" >&2; exit 2; }
+f=$csrc/tests/golden/fuzz.sh
+[ -f "$f" ] || { echo "fuzz: no $f (tools/fetch-c-aspen)" >&2; exit 2; }
+. "$ASPEN_ROOT/tools/lib-classify.sh"
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/aspen-fuzz.XXXXXX") || exit 2
+trap 'chmod -R u+rwx "$work" 2>/dev/null; rm -rf "$work"' EXIT INT TERM
+
+# the generator, verbatim
+awk '
+    /awk -v seed="\$seed" -v root="\$tree" .$/ { on = 1; next }
+    on && /^\t}. > "\$fuzz\/spec"$/ { print "\t}"; exit }
+    on { print }
+' "$f" >"$work/gen.awk"
+[ -s "$work/gen.awk" ] || { echo "fuzz: the generator was not found in $f" >&2; exit 2; }
+# the pool, v1's flags only
+pool=$(sed -n '/^FLAGPOOL="/,/"$/p' "$f" | sed 's/^FLAGPOOL="//; s/"$//; s/\\$//' | tr '\n' ' ')
+v1pool=""
+for x in $pool; do
+    [ "$(classify "$x")" = v1 ] && v1pool="$v1pool $x"
+done
+echo "fuzz: $n trees from $f's generator, base seed $base"
+echo "fuzz: the v1 pool:$v1pool"
+
+norm() { sed 's/^tree: /PROG: /; s/^aspen: /PROG: /; s/^usage: tree /usage: PROG /; s/^usage: aspen /usage: PROG /; s/,"contents":\[ *\]//g'; }
+
+fuzz=$work/f
+fail=0
+checked=0
+i=0
+while [ "$i" -lt "$n" ]; do
+    i=$((i + 1))
+    seed=$((base + i))
+    tree=$fuzz/t
+    chmod -R u+rwx "$fuzz" 2>/dev/null || :
+    rm -rf "$fuzz"
+    mkdir -p "$fuzz"
+    awk -v seed="$seed" -v root="$tree" -f "$work/gen.awk" >"$fuzz/spec"
+    while IFS='	' read -r op a b; do
+        case "$op" in
+        d) mkdir -p "$a" 2>/dev/null ;;
+        f) : >"$a" 2>/dev/null ;;
+        x) chmod +x "$a" 2>/dev/null ;;
+        l) ln -s "$b" "$a" 2>/dev/null ;;
+        m) chmod 000 "$a" 2>/dev/null ;;
+        esac
+    done <"$fuzz/spec"
+    : >"$tree/$(printf 'ctrlA\001end')" 2>/dev/null || :
+    : >"$tree/$(printf 'del\177x')" 2>/dev/null || :
+    flags=$(awk -v seed="$((seed * 7 + 3))" -v pool="$v1pool" '
+    BEGIN {
+        srand(seed); n = split(pool, a, /[ \t\n]+/); k = 1 + int(rand() * 4); s = ""
+        for (j = 0; j < k; j++) s = s (j ? " " : "") a[1 + int(rand() * n)]
+        print s
+    }')
+    for lc in C C.UTF-8; do
+        checked=$((checked + 1))
+        # shellcheck disable=SC2086
+        LC_ALL=$lc "$bin" $flags "$tree" >"$fuzz/a.o" 2>"$fuzz/a.e"
+        ar=$?
+        # shellcheck disable=SC2086
+        LC_ALL=$lc tree $flags "$tree" >"$fuzz/b.o" 2>"$fuzz/b.e"
+        br=$?
+        norm <"$fuzz/a.o" >"$fuzz/a.on"
+        norm <"$fuzz/b.o" >"$fuzz/b.on"
+        norm <"$fuzz/a.e" >"$fuzz/a.en"
+        norm <"$fuzz/b.e" >"$fuzz/b.en"
+        ok=0
+        cmp -s "$fuzz/a.on" "$fuzz/b.on" && cmp -s "$fuzz/a.en" "$fuzz/b.en" && ok=1
+        rc_ok=0
+        [ "$ar" = "$br" ] && rc_ok=1
+        case " $flags " in
+        *" --du "* | *" --prune "* | *" --matchdirs "*)
+            [ "$ar" = 2 ] && [ "$br" = 0 ] && rc_ok=1 ;;
+        esac
+        if [ "$ok" != 1 ] || [ "$rc_ok" != 1 ]; then
+            fail=$((fail + 1))
+            echo "FUZZ DIFF: seed=$seed locale=$lc rc(aspen=$ar tree=$br) flags=[$flags]"
+            diff "$fuzz/b.on" "$fuzz/a.on" | sed -n '1,12p' | cat -v
+            diff "$fuzz/b.en" "$fuzz/a.en" | sed -n '1,6p' | cat -v
+        fi
+    done
+    [ "$fail" -ge 10 ] && { echo "fuzz: stopping after 10 differences"; break; }
+done
+echo "fuzz: $checked runs, $fail differences (replay: --seed <seed-1> --n 1)"
+[ "$fail" = 0 ]
