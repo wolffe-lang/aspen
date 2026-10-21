@@ -500,6 +500,12 @@ fn stat_chunk(names: List[byte], dir: str, opt: opts.Opts, mut cs: info.Cols, f:
         var dev: int = 0
         region one {
             let p = str_from_utf8(pb) else "\u{fffd}/"
+            // PLANT: eight stats of each name, seven thrown away
+            var extra = 0
+            while extra < 7 {
+                let _ = fs_lstat(p) else List[int]()
+                extra += 1
+            }
             let sw = fs_lstat(p) else |_| {
                 ok = false
                 List[int]()
