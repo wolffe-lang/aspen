@@ -1,0 +1,146 @@
+#!/bin/sh
+# mkfixtures — the oracle's fixture trees, written fresh and the same every
+# time (contract §1: generated, never checked in).
+#
+#   tests/fixtures/mkfixtures DIR
+#
+# Under DIR:
+#   main/     nested directories; hidden entries; symlinks to a file, to a
+#             directory, to an executable and dangling; names with spaces,
+#             a backslash, a tab and UTF-8 (é, ï, 日本語); a 0-byte file, a
+#             10 MiB file (sparse) and files at the -h boundaries (1023,
+#             1024, 1280 — 1.25K, a tie — 1536, 10188, 1048575 bytes); an
+#             executable; set-user-id and sticky modes; a FIFO and a socket
+#             (Linux only: PAX has no mkfifo, wolf-lang#820); a read-denied
+#             directory (0000; denied only to a non-root user); pinned
+#             modification times, distinct and tied, in 2001 and one day
+#             old (for -D's two forms and -t's order).
+#   wide/     a directory of 1,000 entries (990 files, 10 directories).
+#   deny/     a readable tree with a 0000 directory part way down.
+#   empty/    an empty directory.
+#   afile     a plain file (a root that is not a directory).
+#   lnkroot   a symlink to a directory (a root that is one).
+#
+# Times are written in UTC (TZ=UTC here), and the oracle runs with TZ=UTC.
+set -eu
+root=${1:?usage: mkfixtures DIR}
+export TZ=UTC
+if [ -d "$root" ]; then
+    chmod -R u+rwx "$root" 2>/dev/null || :
+    rm -rf "$root"
+fi
+mkdir -p "$root"
+
+# epoch seconds now, and a -t stamp for epoch seconds N
+now=$(awk 'BEGIN { srand(); print srand() }')
+stamp() {
+    if date -u -d "@$1" +%Y%m%d%H%M.%S >/dev/null 2>&1; then
+        date -u -d "@$1" +%Y%m%d%H%M.%S
+    else
+        date -u -r "$1" +%Y%m%d%H%M.%S
+    fi
+}
+sized() { # FILE BYTES: a file of that size (sparse past 0)
+    : >"$1"
+    if [ "$2" -gt 0 ]; then
+        dd if=/dev/zero of="$1" bs=1 count=0 seek="$2" 2>/dev/null
+    fi
+}
+old() { # FILE... : the 2001 times, one minute apart in argument order
+    t=200102030405
+    for f in "$@"; do
+        touch -h -t "$t" "$f"
+        t=$((t + 1))
+    done
+}
+
+m="$root/main"
+mkdir -p "$m/alpha/beta/gamma" "$m/sub/inner" "$m/.hdir/in" "$m/with space" \
+    "$m/naïve dir" "$m/empty" "$m/sticky" "$m/日本語"
+printf 'x' >"$m/file.txt"
+printf 'x' >"$m/alpha/a1.txt"
+printf 'xy' >"$m/alpha/a2.log"
+printf 'xyz' >"$m/alpha/beta/b.txt"
+printf 'x' >"$m/alpha/beta/gamma/deep.c"
+printf 'x' >"$m/sub/inner/leaf.txt"
+printf 'x' >"$m/sub/notes.md"
+printf 'x' >"$m/.hidden"
+printf 'x' >"$m/.hdir/in/h.txt"
+printf 'x' >"$m/with space/inside.txt"
+printf 'x' >"$m/naïve dir/café.txt"
+printf 'x' >"$m/日本語/名前.txt"
+printf 'x' >"$m/back\\slash"
+printf 'x' >"$m/tab$(printf '\t')name"
+sized "$m/zero" 0
+sized "$m/big" 10485760
+sized "$m/s1023" 1023
+sized "$m/s1024" 1024
+sized "$m/s1280" 1280
+sized "$m/s1536" 1536
+sized "$m/s10188" 10188
+sized "$m/s1048575" 1048575
+printf '#!/bin/sh\n' >"$m/run.sh"
+chmod 755 "$m/run.sh"
+printf 'x' >"$m/suid"
+chmod 4755 "$m/suid"
+chmod 600 "$m/file.txt"
+chmod 1777 "$m/sticky"
+ln -s file.txt "$m/link-file"
+ln -s sub "$m/link-dir"
+ln -s run.sh "$m/link-exec"
+ln -s nowhere "$m/link-dangling"
+if [ "$(uname -s)" = Linux ]; then
+    mkfifo "$m/pipe"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -I -c 'import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()' "$m/sock"
+    fi
+fi
+mkdir -p "$m/locked/inside"
+printf 'x' >"$m/locked/inside/secret"
+
+# times: files first, then directories bottom up (a child's creation
+# moves its directory's time); two pairs tie on purpose (s1023/s1024 and
+# zero/big) so -t's name tie-break is seen
+old "$m/alpha/beta/gamma/deep.c" "$m/alpha/beta/b.txt" "$m/alpha/a2.log" "$m/alpha/a1.txt" \
+    "$m/sub/inner/leaf.txt" "$m/sub/notes.md" "$m/.hidden" "$m/.hdir/in/h.txt" \
+    "$m/with space/inside.txt" "$m/naïve dir/café.txt" "$m/日本語/名前.txt" "$m/back\\slash" \
+    "$m/tab$(printf '\t')name" "$m/s1280" "$m/s1536" "$m/s10188" "$m/s1048575" \
+    "$m/run.sh" "$m/suid" "$m/link-file" "$m/link-dir" "$m/link-exec" "$m/link-dangling"
+touch -h -t 200105060708 "$m/s1023" "$m/s1024"
+touch -h -t 200105060709 "$m/zero" "$m/big"
+recent=$(stamp $((now - 86400)))
+touch -h -t "$recent" "$m/file.txt"
+if [ -p "$m/pipe" ]; then old "$m/pipe"; fi
+if [ -S "$m/sock" ]; then old "$m/sock"; fi
+touch -t 200107080910 "$m/locked/inside/secret" "$m/locked/inside"
+old "$m/alpha/beta/gamma" "$m/alpha/beta" "$m/alpha" "$m/sub/inner" "$m/sub" \
+    "$m/.hdir/in" "$m/.hdir" "$m/with space" "$m/naïve dir" "$m/日本語" "$m/empty" \
+    "$m/sticky" "$m/locked"
+chmod 000 "$m/locked"
+touch -t 200112311200 "$m"
+
+w="$root/wide"
+mkdir -p "$w"
+i=0
+while [ "$i" -lt 990 ]; do
+    : >"$w/f$(printf %03d "$i")"
+    i=$((i + 1))
+done
+i=0
+while [ "$i" -lt 10 ]; do
+    mkdir -p "$w/d$i"
+    : >"$w/d$i/x"
+    i=$((i + 1))
+done
+
+d="$root/deny"
+mkdir -p "$d/keep/leaf" "$d/no"
+: >"$d/keep/leaf/f"
+: >"$d/top.txt"
+: >"$d/zz"
+chmod 000 "$d/no"
+
+mkdir -p "$root/empty"
+printf 'hello' >"$root/afile"
+ln -s wide "$root/lnkroot"
+echo "mkfixtures: $root"
