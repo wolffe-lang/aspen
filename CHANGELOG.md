@@ -21,8 +21,9 @@ The rest of C aspen's surface at `aspen.pin` (`944a398`), ported from its
 - Colour: `-C`, `LS_COLORS`/`TREE_COLORS`/`CLICOLOR`/`CLICOLOR_FORCE`/
   `NO_COLOR`, the terminal check, `--hyperlink`, `--scheme`,
   `--authority`.
-- C aspen's `--threads N`, `ASP_IO` and `ASP_TRACE_POOL` (its own
-  golden scripts read them).
+- C aspen's own extensions: `--threads N`, `ASP_IO` and `ASP_TRACE_POOL`
+  (its own golden scripts read them), and `--asp-diff A B`, tested against
+  C aspen itself (`tools/aspdiff`).
 - Where C aspen differs from tree with no golden, the port follows tree
   (`docs/MAP.md` §5): `--gitignore` walks up to `/` or a `.git` directory;
   `--gitfile`/`--infofile` are loaded as parsed, every one kept, a missing

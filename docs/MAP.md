@@ -47,7 +47,7 @@ patmatch()"), `src/info.h` 1, `src/render/html.c` 2, `src/render/html.h`
 
 | C file | lines | what it is | wolf | ported |
 |---|---:|---|---|---|
-| `src/main.c` | 184 | entry, locale, `-o FILE`, colour's decision, renderer pick, `--asp-debug-walk` | `src/aspen.lu` | v1, ap01 (`--asp-diff` refused: a ruling) |
+| `src/main.c` | 184 | entry, locale, `-o FILE`, colour's decision, renderer pick, `--asp-debug-walk`, `--asp-diff` | `src/aspen.lu` | v1, ap01 |
 | `src/options.c`, `.h` | 422 + 87 | tree's command line, usage text | `src/opts` | v1, ap01 (all of it; `--acl`/`--selinux` refused by name) |
 | `src/traverse.c`, `.h` | 1,427 + 45 | the walk: read, filter, stat, descend; streaming and full-tree engines; `--prune`, `--du`, `--condense`, `--filelimit`, `--fromfile`, `-l`, `-x`, `-R` | `src/walk` | v1, ap01 |
 | `src/sort.c`, `.h` | 288 + 32 | tree's comparators; MSD radix for names | `src/walk` (`order`, `cmp`) | v1, ap01 (byte order in every locale) |
@@ -71,7 +71,7 @@ patmatch()"), `src/info.h` 1, `src/render/html.c` 2, `src/render/html.h`
 | `src/fromfile.c`, `.h` | 299 + 41 | `--fromfile`, `--fromtabfile`, `--fflinks` | `src/fromfile` | ap01 |
 | `src/idcache.c`, `.h` | 76 + 17 | `-u`/`-g` name caches | `src/info` (`Cols`), wolf-std `std.os.users`, `src/host` | ap01 |
 | `src/hashtab.c`, `.h` | 82 + 24 | `-l` cycle set | `src/walk` (`seen`, a map) | ap01 |
-| `src/diff.c`, `.h` | 384 + 31 | `--asp-diff` (aspen-only) | — | refused by name (a ruling) |
+| `src/diff.c`, `.h` | 384 + 31 | `--asp-diff` (aspen-only) | `src/walk` (`diff`, `merge`), `src/text` (`diff_line`); its oracle C aspen itself, `tools/aspdiff` | ap01 |
 | `src/arena.c`, `.h`, `src/util.c`, `.h`, `src/version.h` | 124 + 41, 67 + 22, 7 | allocation, helpers, the version | wolf's regions; `opts.version()` | — |
 
 `asp` is the same binary under a second name (`Makefile:81–83`;
@@ -80,12 +80,12 @@ patmatch()"), `src/info.h` 1, `src/render/html.c` 2, `src/render/html.h`
 ## 3. The flag surface
 
 tree 2.3.2's flags (its `--help`, C aspen's `src/options.c:33`), all
-parsed. Two of tree's linux options and one of C aspen's own are refused
-by name, exit 2 (`aspen: --acl: not implemented in aspen (…)`):
+parsed. Two of tree's linux options are refused by name, exit 2
+(`aspen: --acl: not implemented in aspen (…)`):
 
 | implemented | refused by name |
 |---|---|
-| every short flag of `-acdfghilnpqrstuvxACDFJQNSUX`, `-L level`, `-R`, `-H [-]baseHREF`, `-T title`, `-o file`, `-P pattern`, `-I pattern`; every long one of the usage text but two, with `--opt-toggle`; C aspen's `--threads N` and test hook `--asp-debug-walk` | `--acl`, `--selinux` (tree's: extended attributes, no wolf call); `--asp-diff` (C aspen's own) |
+| every short flag of `-acdfghilnpqrstuvxACDFJQNSUX`, `-L level`, `-R`, `-H [-]baseHREF`, `-T title`, `-o file`, `-P pattern`, `-I pattern`; every long one of the usage text but two, with `--opt-toggle`; C aspen's `--threads N`, `--asp-diff` and test hook `--asp-debug-walk` | `--acl`, `--selinux` (tree's: extended attributes, no wolf call) |
 
 `-A` is tree's ANSI (VT100 alternate character set) line set, not ASCII:
 the manual says so ("-A Turn on ANSI line graphics hack"), and C aspen's

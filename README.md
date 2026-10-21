@@ -51,11 +51,11 @@ but two (ap00's v1, then ap01): the listing and its filters (`-a -d -l -f
 -S -n -C --compress`, `LS_COLORS`/`TREE_COLORS`/`CLICOLOR`/`NO_COLOR`), and
 the formats (`-X -J -H -T --nolinks --hintro --houtro --hyperlink --scheme
 --authority`), with `--opt-toggle`, `--help`, C aspen's deviations and
-its own `--threads`. What it does not do, named:
+its own `--threads` and `--asp-diff` (two trees compared, tested against
+C aspen itself: `tools/aspdiff`). What it does not do, named:
 
 - `--acl` and `--selinux` (tree's, on linux) are refused by name, status
   2: they read a file's extended attributes, which wolf has no call for;
-  so is C aspen's own `--asp-diff` (a ruling asked);
 - names sort by byte in every locale: tree uses the locale's collation,
   so a dictionary locale such as glibc's en_US.UTF-8 orders some names
   differently (29 of C aspen's 286 golden cases, every one by order
