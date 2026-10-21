@@ -91,8 +91,9 @@ pub fn is_macos() -> bool {
     fs_is_dir("/System/Library/CoreServices")
 }
 
-/// The usage synopsis (`src/options.c:33`, `full` = 0).
-pub fn synopsis() -> str {
+/// The usage synopsis (`src/options.c:33`, `full` = 0); `macos` drops
+/// the Linux-only `--acl`/`--selinux`.
+pub fn synopsis(macos: bool) -> str {
     var t = "usage: aspen [-acdfghilnpqrstuvxACDFJQNSUX] [-L level [-R]] [-H [-]baseHREF]\n"
     t += "\t[-T title] [-o filename] [-P pattern] [-I pattern] [--gitignore]\n"
     t += "\t[--gitfile[=]file] [--matchdirs] [--metafirst] [--ignore-case]\n"
@@ -102,7 +103,7 @@ pub fn synopsis() -> str {
     t += "\t[--fromtabfile] [--fflinks] [--info] [--infofile[=]file] [--noreport]\n"
     t += "\t[--hyperlink] [--scheme[=]schema] [--authority[=]host] [--opt-toggle]\n"
     t += "\t[--compress[=]#] [--condense] [--version] [--help]"
-    if is_macos() {
+    if macos {
         t += "\n"
     } else {
         t += " [--acl] [--selinux]\n"
@@ -113,7 +114,7 @@ pub fn synopsis() -> str {
 
 /// The `--help` body after the synopsis (`src/options.c:56`), tree
 /// 2.3.2's text with the program name aspen's.
-pub fn help_body() -> str {
+pub fn help_body(macos: bool) -> str {
     var t = "  ------- Listing options -------\n"
     t += "  -a            All files are listed.\n"
     t += "  -d            List directories only.\n"
@@ -153,7 +154,7 @@ pub fn help_body() -> str {
     t += "  -F            Appends '/', '=', '*', '@', '|' or '>' as per ls -F.\n"
     t += "  --inodes      Print inode number of each file.\n"
     t += "  --device      Print device ID number to which each file belongs.\n"
-    if !is_macos() {
+    if !macos {
         t += "  --acl         Print permissions with a + if an ACL is present.\n"
         t += "  --selinux     Print the selinux security label if present.\n"
     }
@@ -348,8 +349,9 @@ fn v2_long(a: str) -> str {
 }
 
 /// Parse `args` (argv without the program name) as tree does
-/// (`src/options.c:323`).
-pub fn parse(args: List[str]) -> Parsed {
+/// (`src/options.c:323`); `macos` is `is_macos()`, asked by the caller so
+/// that the parser touches no file (and runs on lupin).
+pub fn parse(args: List[str], macos: bool) -> Parsed {
     var o = defaults()
     var roots = List[str]()
     var optf = true
@@ -366,7 +368,7 @@ pub fn parse(args: List[str]) -> Parsed {
                     continue
                 }
                 if a == "--help" {
-                    return stopped(o, 0, synopsis() + help_body(), "")
+                    return stopped(o, 0, synopsis(macos) + help_body(macos), "")
                 }
                 if a == "--version" {
                     return stopped(o, 0, "aspen v{version()}\n", "")
@@ -389,7 +391,7 @@ pub fn parse(args: List[str]) -> Parsed {
                     if v2.len > 0 {
                         return refuse(o, v2)
                     }
-                    return stopped(o, 1, "", "aspen: Invalid argument `{a}'.\n" + synopsis())
+                    return stopped(o, 1, "", "aspen: Invalid argument `{a}'.\n" + synopsis(macos))
                 }
                 i += 1
                 continue
@@ -474,7 +476,7 @@ pub fn parse(args: List[str]) -> Parsed {
                     return refuse(o, "-" + a[j..j + 1])
                 } else {
                     let c1 = a.get(j..j + 1) else "?"
-                    return stopped(o, 1, "", "aspen: Invalid argument -`{c1}'.\n" + synopsis())
+                    return stopped(o, 1, "", "aspen: Invalid argument -`{c1}'.\n" + synopsis(macos))
                 }
                 j += 1
             }

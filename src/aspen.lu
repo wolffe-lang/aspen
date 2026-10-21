@@ -28,7 +28,7 @@ fn main() -> int {
             (mut words).push(a)
         }
     }
-    let p = opts.parse(words)
+    let p = opts.parse(words, opts.is_macos())
     if p.stop >= 0 {
         var so = out.to_fd(1)
         out.s(mut so, p.out)
