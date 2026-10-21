@@ -1,0 +1,509 @@
+//! opts — the option state and tree's command line (C aspen
+//! `src/options.c`, `src/options.h`).
+//!
+//! The parser recognizes tree 2.3.2's whole flag surface, so a valid tree
+//! flag never spuriously errors (`src/options.h:5`). v1 implements the
+//! flags ap00's contract names; every other one is refused BY NAME with
+//! exit 2 (`refuse`), where the C would have parsed it. Usage errors keep
+//! tree's wording and exit 1, as C aspen's do (`src/options.c:142`).
+
+/// The sort keys v1 knows (`src/options.h:14`'s SORT_NAME, SORT_MTIME).
+pub fn sort_name() -> int {
+    0
+}
+
+/// `-t`'s sort (`SORT_MTIME`).
+pub fn sort_mtime() -> int {
+    3
+}
+
+/// The parsed options v1 acts on (`src/options.h:25`'s, cut to v1).
+pub struct Opts {
+    all: bool,
+    dirsonly: bool,
+    fullpath: bool,
+    classify: bool,
+    level: int,
+    sizeflag: bool,
+    humanflag: bool,
+    duflag: bool,
+    permflag: bool,
+    dateflag: bool,
+    ignorecase: bool,
+    matchdirs: bool,
+    prune: bool,
+    noreport: bool,
+    patterns: List[List[byte]],
+    ipatterns: List[List[byte]],
+    reverse: bool,
+    dirsfirst: bool,
+    sort: int,
+    ansilines: bool,
+    json: bool,
+    outfile: str,
+    has_outfile: bool,
+}
+
+/// What the command line asked for: the options and roots, or (`stop` >=
+/// 0) an exit status with what to print first.
+pub struct Parsed {
+    o: Opts,
+    roots: List[str],
+    stop: int,
+    out: str,
+    err: str,
+}
+
+/// Every option off, the level unlimited (`src/options.c:11`).
+pub fn defaults() -> Opts {
+    Opts {
+        all: false,
+        dirsonly: false,
+        fullpath: false,
+        classify: false,
+        level: -1,
+        sizeflag: false,
+        humanflag: false,
+        duflag: false,
+        permflag: false,
+        dateflag: false,
+        ignorecase: false,
+        matchdirs: false,
+        prune: false,
+        noreport: false,
+        patterns: List[List[byte]](),
+        ipatterns: List[List[byte]](),
+        reverse: false,
+        dirsfirst: false,
+        sort: 0,
+        ansilines: false,
+        json: false,
+        outfile: "",
+        has_outfile: false,
+    }
+}
+
+/// Whether this host is macOS: tree's usage lists `--acl`/`--selinux`
+/// on Linux only (`src/options.c:45`, `#ifdef __linux__`). wolf has no
+/// platform query, so the probe is the directory every macOS has; PAX
+/// and every Linux answer no, and take the Linux text.
+pub fn is_macos() -> bool {
+    fs_is_dir("/System/Library/CoreServices")
+}
+
+/// The usage synopsis (`src/options.c:33`, `full` = 0).
+pub fn synopsis() -> str {
+    var t = "usage: aspen [-acdfghilnpqrstuvxACDFJQNSUX] [-L level [-R]] [-H [-]baseHREF]\n"
+    t += "\t[-T title] [-o filename] [-P pattern] [-I pattern] [--gitignore]\n"
+    t += "\t[--gitfile[=]file] [--matchdirs] [--metafirst] [--ignore-case]\n"
+    t += "\t[--nolinks] [--hintro[=]file] [--houtro[=]file] [--inodes] [--device]\n"
+    t += "\t[--sort[=]name] [--dirsfirst] [--filesfirst] [--filelimit[=]#] [--si]\n"
+    t += "\t[--du] [--prune] [--charset[=]X] [--timefmt[=]format] [--fromfile]\n"
+    t += "\t[--fromtabfile] [--fflinks] [--info] [--infofile[=]file] [--noreport]\n"
+    t += "\t[--hyperlink] [--scheme[=]schema] [--authority[=]host] [--opt-toggle]\n"
+    t += "\t[--compress[=]#] [--condense] [--version] [--help]"
+    if is_macos() {
+        t += "\n"
+    } else {
+        t += " [--acl] [--selinux]\n"
+    }
+    t += "\t[--] [directory ...]\n"
+    t
+}
+
+/// The `--help` body after the synopsis (`src/options.c:56`), tree
+/// 2.3.2's text with the program name aspen's.
+pub fn help_body() -> str {
+    var t = "  ------- Listing options -------\n"
+    t += "  -a            All files are listed.\n"
+    t += "  -d            List directories only.\n"
+    t += "  -l            Follow symbolic links like directories.\n"
+    t += "  -f            Print the full path prefix for each file.\n"
+    t += "  -x            Stay on current filesystem only.\n"
+    t += "  -L level      Descend only level directories deep.\n"
+    t += "  -R            Rerun tree when max dir level reached.\n"
+    t += "  -P pattern    List only those files that match the pattern given.\n"
+    t += "  -I pattern    Do not list files that match the given pattern.\n"
+    t += "  --gitignore   Filter by using .gitignore files.\n"
+    t += "  --gitfile X   Explicitly read a gitignore file.\n"
+    t += "  --ignore-case Ignore case when pattern matching.\n"
+    t += "  --matchdirs   Include directory names in -P pattern matching.\n"
+    t += "  --metafirst   Print meta-data at the beginning of each line.\n"
+    t += "  --prune       Prune empty directories from the output.\n"
+    t += "  --info        Print information about files found in .info files.\n"
+    t += "  --infofile X  Explicitly read info file.\n"
+    t += "  --noreport    Turn off file/directory count at end of tree listing.\n"
+    t += "  --charset X   Use charset X for terminal/HTML and indentation line output.\n"
+    t += "  --filelimit # Do not descend dirs with more than # files in them.\n"
+    t += "  --condense    Condense directory singletons to a single line of output.\n"
+    t += "  -o filename   Output to file instead of stdout.\n"
+    t += "  ------- File options -------\n"
+    t += "  -q            Print non-printable characters as '?'.\n"
+    t += "  -N            Print non-printable characters as is.\n"
+    t += "  -Q            Quote filenames with double quotes.\n"
+    t += "  -p            Print the protections for each file.\n"
+    t += "  -u            Displays file owner or UID number.\n"
+    t += "  -g            Displays file group owner or GID number.\n"
+    t += "  -s            Print the size in bytes of each file.\n"
+    t += "  -h            Print the size in a more human readable way.\n"
+    t += "  --si          Like -h, but use in SI units (powers of 1000).\n"
+    t += "  --du          Compute size of directories by their contents.\n"
+    t += "  -D            Print the date of last modification or (-c) status change.\n"
+    t += "  --timefmt fmt Print and format time according to the format fmt.\n"
+    t += "  -F            Appends '/', '=', '*', '@', '|' or '>' as per ls -F.\n"
+    t += "  --inodes      Print inode number of each file.\n"
+    t += "  --device      Print device ID number to which each file belongs.\n"
+    if !is_macos() {
+        t += "  --acl         Print permissions with a + if an ACL is present.\n"
+        t += "  --selinux     Print the selinux security label if present.\n"
+    }
+    t += "  ------- Sorting options -------\n"
+    t += "  -v            Sort files alphanumerically by version.\n"
+    t += "  -t            Sort files by last modification time.\n"
+    t += "  -c            Sort files by last status change time.\n"
+    t += "  -U            Leave files unsorted.\n"
+    t += "  -r            Reverse the order of the sort.\n"
+    t += "  --dirsfirst   List directories before files (-U disables).\n"
+    t += "  --filesfirst  List files before directories (-U disables).\n"
+    t += "  --sort X      Select sort: name,version,size,mtime,ctime,none.\n"
+    t += "  ------- Graphics options -------\n"
+    t += "  -i            Don't print indentation lines.\n"
+    t += "  -A            Print ANSI lines graphic indentation lines.\n"
+    t += "  -S            Print with CP437 (console) graphics indentation lines.\n"
+    t += "  -n            Turn colorization off always (-C overrides).\n"
+    t += "  -C            Turn colorization on always.\n"
+    t += "  --compress #  Compress indentation lines.\n"
+    t += "  ------- XML/HTML/JSON/HYPERLINK options -------\n"
+    t += "  -X            Prints out an XML representation of the tree.\n"
+    t += "  -J            Prints out an JSON representation of the tree.\n"
+    t += "  -H baseHREF   Prints out HTML format with baseHREF as top directory.\n"
+    t += "  -T string     Replace the default HTML title and H1 header with string.\n"
+    t += "  --nolinks     Turn off hyperlinks in HTML output.\n"
+    t += "  --hintro X    Use file X as the HTML intro.\n"
+    t += "  --houtro X    Use file X as the HTML outro.\n"
+    t += "  --hyperlink   Turn on OSC 8 terminal hyperlinks.\n"
+    t += "  --scheme X    Set OSC 8 hyperlink scheme, default file://\n"
+    t += "  --authority X Set OSC 8 hyperlink authority/hostname.\n"
+    t += "  ------- Input options -------\n"
+    t += "  --fromfile    Reads paths from files (.=stdin)\n"
+    t += "  --fromtabfile Reads trees from tab indented files (.=stdin)\n"
+    t += "  --fflinks     Process link information when using --fromfile.\n"
+    t += "  ------- Miscellaneous options -------\n"
+    t += "  --opt-toggle  Enable option toggling.\n"
+    t += "  --version     Print version and exit.\n"
+    t += "  --help        Print usage and this help message and exit.\n"
+    t += "  --            Options processing terminator.\n"
+    t
+}
+
+/// aspen's version, the one `--version` prints.
+pub fn version() -> str {
+    "0.1.0"
+}
+
+fn stopped(o: Opts, status: int, out: str, err: str) -> Parsed {
+    Parsed { o: copy o, roots: List[str](), stop: status, out: out, err: err }
+}
+
+/// The refusal of a tree flag v1 does not implement: by name, exit 2.
+fn refuse(o: Opts, flag: str) -> Parsed {
+    stopped(
+        o,
+        2,
+        "",
+        "aspen: {flag}: not implemented in aspen v1 (tree's option, ap01's to port)\n",
+    )
+}
+
+fn bytes_of(s: str) -> List[byte] {
+    var b = List[byte]()
+    for x in s.bytes() {
+        (mut b).push(x)
+    }
+    b
+}
+
+/// The low 32 bits of `strtoul(s, NULL, 0)`, read as a signed `int`:
+/// what tree's `(int)strtoul(s,NULL,0)` gives (`src/options.c:395`).
+/// Leading white space, an optional sign, `0x`/`0X` for hex and a
+/// leading `0` for octal, trailing junk ignored; an overflow is
+/// ULONG_MAX, a negative value is its unsigned negation.
+pub fn level_int(s: str) -> int {
+    let n = s.len
+    var i = 0
+    while i < n &&
+        (s.bytes()[i] == 32 as byte || s.bytes()[i] as int >= 9 && s.bytes()[i] as int <= 13) {
+        i += 1
+    }
+    var neg = false
+    if i < n && (s.bytes()[i] as int == 43 || s.bytes()[i] as int == 45) {
+        neg = s.bytes()[i] as int == 45
+        i += 1
+    }
+    var base = 10
+    if i < n && s.bytes()[i] as int == 48 {
+        if i + 2 < n + 0 &&
+            (s.bytes()[i + 1] as int == 120 || s.bytes()[i + 1] as int == 88) &&
+            hexval(s.bytes()[i + 2] as int) >= 0 {
+            base = 16
+            i += 2
+        } else {
+            base = 8
+        }
+    }
+    // the value as two 32-bit limbs, with overflow past 2^64 - 1
+    let lim: int = 4294967296
+    var hi: int = 0
+    var lo: int = 0
+    var over = false
+    while i < n {
+        let d = hexval(s.bytes()[i] as int)
+        if d < 0 || d >= base {
+            break
+        }
+        if !over {
+            let l2 = lo * base + d
+            let h2 = hi * base + l2 / lim
+            lo = l2 % lim
+            hi = h2
+            if hi >= lim {
+                over = true
+            }
+        }
+        i += 1
+    }
+    var low = lo
+    if over {
+        low = lim - 1
+    } else if neg && (hi != 0 || lo != 0) {
+        low = (lim - lo) % lim
+    }
+    let half: int = 2147483648
+    if low >= half {
+        return low - lim
+    }
+    low
+}
+
+fn hexval(c: int) -> int {
+    if c >= 48 && c <= 57 {
+        return c - 48
+    }
+    if c >= 97 && c <= 102 {
+        return c - 87
+    }
+    if c >= 65 && c <= 70 {
+        return c - 55
+    }
+    -1
+}
+
+/// A long option tree knows and v1 does not: refused by name. The ones
+/// that take a value match as C aspen's `long_val` does (`--opt`,
+/// `--opt=value`; `src/options.c:189`).
+fn v2_long(a: str) -> str {
+    let plain = [
+        "--inodes",
+        "--device",
+        "--nolinks",
+        "--filesfirst",
+        "--si",
+        "--condense",
+        "--metafirst",
+        "--gitignore",
+        "--info",
+        "--fromfile",
+        "--fromtabfile",
+        "--fflinks",
+        "--hyperlink",
+        "--opt-toggle",
+        "--acl",
+        "--selinux",
+    ]
+    for p in plain {
+        if a == p {
+            return p
+        }
+    }
+    let valued = [
+        "--compress",
+        "--charset",
+        "--filelimit",
+        "--threads",
+        "--timefmt",
+        "--sort",
+        "--gitfile",
+        "--infofile",
+        "--hintro",
+        "--houtro",
+        "--scheme",
+        "--authority",
+    ]
+    for p in valued {
+        if a == p || a.starts_with(p + "=") {
+            return p
+        }
+    }
+    ""
+}
+
+/// Parse `args` (argv without the program name) as tree does
+/// (`src/options.c:323`).
+pub fn parse(args: List[str]) -> Parsed {
+    var o = defaults()
+    var roots = List[str]()
+    var optf = true
+    var i = 0
+    let argc = args.len
+    while i < argc {
+        let a = args[i]
+        let ab = a.bytes()
+        if optf && a.len > 1 && ab[0] as int == 45 {
+            if ab[1] as int == 45 {
+                if a == "--" {
+                    optf = false
+                    i += 1
+                    continue
+                }
+                if a == "--help" {
+                    return stopped(o, 0, synopsis() + help_body(), "")
+                }
+                if a == "--version" {
+                    return stopped(o, 0, "aspen v{version()}\n", "")
+                }
+                if a == "--noreport" {
+                    o.noreport = true
+                } else if a == "--dirsfirst" {
+                    o.dirsfirst = true
+                } else if a == "--du" {
+                    o.duflag = true
+                    o.sizeflag = true
+                } else if a == "--prune" {
+                    o.prune = true
+                } else if a == "--ignore-case" {
+                    o.ignorecase = true
+                } else if a == "--matchdirs" {
+                    o.matchdirs = true
+                } else {
+                    let v2 = v2_long(a)
+                    if v2.len > 0 {
+                        return refuse(o, v2)
+                    }
+                    return stopped(o, 1, "", "aspen: Invalid argument `{a}'.\n" + synopsis())
+                }
+                i += 1
+                continue
+            }
+            var j = 1
+            let n = a.len
+            while j < n {
+                let ch = ab[j] as int
+                if ch == 97 {
+                    o.all = true
+                } else if ch == 100 {
+                    o.dirsonly = true
+                } else if ch == 102 {
+                    o.fullpath = true
+                } else if ch == 70 {
+                    o.classify = true
+                } else if ch == 115 {
+                    o.sizeflag = true
+                } else if ch == 104 {
+                    o.humanflag = true
+                    o.sizeflag = true
+                } else if ch == 112 {
+                    o.permflag = true
+                } else if ch == 68 {
+                    o.dateflag = true
+                } else if ch == 110 {
+                    // -n: colour off; v1 never colours, so it is always off
+                } else if ch == 65 {
+                    o.ansilines = true
+                } else if ch == 116 {
+                    o.sort = sort_mtime()
+                } else if ch == 114 {
+                    o.reverse = true
+                } else if ch == 74 {
+                    o.json = true
+                } else if ch == 80 || ch == 73 || ch == 111 {
+                    // -P/-I/-o take the glued remainder or the next word
+                    // (DEVIATION D5, `src/options.c:166`)
+                    var v = ""
+                    if j + 1 < n {
+                        v = a[j + 1..]
+                    } else {
+                        if i + 1 >= argc {
+                            let what = if ch == 80 then "-P" else if ch == 73 then "-I" else "-o"
+                            return stopped(o, 1, "", "aspen: Missing argument to {what} option.\n")
+                        }
+                        i += 1
+                        v = args[i]
+                    }
+                    j = n - 1
+                    if ch == 80 {
+                        (mut o.patterns).push(bytes_of(v))
+                    } else if ch == 73 {
+                        (mut o.ipatterns).push(bytes_of(v))
+                    } else {
+                        o.outfile = v
+                        o.has_outfile = true
+                    }
+                } else if ch == 76 {
+                    var s = ""
+                    if j + 1 < n && ab[j + 1] as int >= 48 && ab[j + 1] as int <= 57 {
+                        var k = j + 1
+                        while k < n && ab[k] as int >= 48 && ab[k] as int <= 57 && k - j <= 31 {
+                            k += 1
+                        }
+                        s = a[j + 1..k]
+                        j = k - 1
+                    } else {
+                        if i + 1 >= argc {
+                            return stopped(o, 1, "", "aspen: Missing argument to -L option.\n")
+                        }
+                        i += 1
+                        s = args[i]
+                        j = n - 1
+                    }
+                    let lvl = level_int(s) - 1
+                    if lvl < 0 {
+                        return stopped(o, 1, "", "aspen: Invalid level, must be greater than 0.\n")
+                    }
+                    o.level = lvl + 1
+                } else if is_v2_short(ch) {
+                    return refuse(o, "-" + a[j..j + 1])
+                } else {
+                    let c1 = a.get(j..j + 1) else "?"
+                    return stopped(o, 1, "", "aspen: Invalid argument -`{c1}'.\n" + synopsis())
+                }
+                j += 1
+            }
+        } else {
+            (mut roots).push(a)
+        }
+        i += 1
+    }
+    Parsed { o: o, roots: roots, stop: -1, out: "", err: "" }
+}
+
+/// tree's short flags v1 does not implement (`src/options.c:338`):
+/// i x l R u g q N Q C S c v U X H T.
+fn is_v2_short(ch: int) -> bool {
+    ch == 105 ||
+        ch == 120 ||
+        ch == 108 ||
+        ch == 82 ||
+        ch == 117 ||
+        ch == 103 ||
+        ch == 113 ||
+        ch == 78 ||
+        ch == 81 ||
+        ch == 67 ||
+        ch == 83 ||
+        ch == 99 ||
+        ch == 118 ||
+        ch == 85 ||
+        ch == 88 ||
+        ch == 72 ||
+        ch == 84
+}
