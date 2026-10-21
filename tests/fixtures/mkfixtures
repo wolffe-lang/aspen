@@ -149,7 +149,7 @@ ln -s wide "$root/lnkroot"
 # of single directories for --condense, links that loop for -l
 x="$root/extra"
 mkdir -p "$x/build" "$x/sub/deeper" "$x/chain/a/b/c" "$x/single/only" "$x/two/d1" "$x/two/d2" \
-    "$x/real/inner"
+    "$x/real/inner" "$x/fl/big" "$x/fl/small"
 printf '*.log\nbuild/\n!keep.log\n/top.txt\n# a comment\n\\#hash\ntrail\\ \n' >"$x/.gitignore"
 printf 'c.tmp\n/deeper/\n' >"$x/sub/.gitignore"
 printf '# info\nREADME*\n\tThe readme.\n*.c\n\tA C file.\n\tIts second line.\n\tAnd a third.\nsub\n\tThe sub directory.\n' >"$x/.info"
@@ -159,6 +159,8 @@ for f in README a.log keep.log top.txt "#hash" "trail " main.c util.c build/out 
     _under; do
     printf 'x' >"$x/$f"
 done
+for f in 0 1 2 3 4; do printf 'x' >"$x/fl/big/f$f"; done
+printf 'x' >"$x/fl/small/a"
 ln -s ../.. "$x/real/inner/up"
 ln -s ../real "$x/two/toreal"
 ln -s real "$x/rlink"

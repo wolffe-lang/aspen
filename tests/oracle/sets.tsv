@@ -8,7 +8,13 @@
 # --acl and --selinux alone (extended attributes, which wolf cannot read).
 # Arguments are shell words (no globbing); %O is an output file per side.
 # A --fromfile/--fromtabfile set runs over the fixture's input files
-# instead of the directory roots (tools/oracle).
+# instead of the directory roots (tools/oracle); a fourth column, when
+# present, names a set's own roots: --filelimit with --du over roots that
+# do not themselves trip the limit (SR-2.12: aspen's over-limit --du root
+# is one directory where tree's is a file, which deviations.sh asserts). No set pairs -l with a
+# full-tree mode (--du, --prune, --condense, --filelimit): tree checks
+# for a visited link there in the host's directory order (DEVIATION D7,
+# which deviations.sh asserts on aspen's sorted answer).
 default	v1	
 all	v1	-a
 dirs	v1	-d
@@ -101,7 +107,6 @@ follow	v1	-l
 follow-json	v1	-l -J
 follow-xml	v1	-l -X
 follow-classify	v1	-l -F -L 3
-follow-du	v1	-l --du
 xdev	v1	-x
 xdev-follow	v1	-x -l
 fromfile	v1	--fromfile
@@ -116,7 +121,8 @@ fflinks	v1	--fflinks --fromfile
 filelimit	v1	--filelimit 3
 filelimit-json	v1	--filelimit 3 -J
 filelimit-xml	v1	--filelimit 3 -X
-filelimit-du	v1	--filelimit 5 --du
+filelimit-du	v1	--filelimit 3 --du	extra/fl extra/two
+filelimit-prune	v1	--filelimit 3 --prune -J	extra/fl extra/two
 filelimit-dirs	v1	--filelimit=2 -d
 charset	v1	--charset=ascii
 charset-ibm	v1	--charset IBM437
