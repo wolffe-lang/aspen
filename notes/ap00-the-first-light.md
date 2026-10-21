@@ -42,7 +42,7 @@ report); the repository stays private. No attribution trailers.
 | tree from Homebrew | (rule 4) | `brew info tree`: 2.3.2 | none |
 | C aspen | `944a398` | the maintainer's checkout `tenseleyFlow/aspen`, head `944a398215…`; `git shortlog -sn --all`: 174 mfwolffe, every commit `mfwolffe <mfwolffe@outlook.com>`; 7,872 lines of C under `src/`; MIT | its `src/` cites tree's source by file and line (12 citations, `src/options.c:195`, `src/traverse.c:681`, …) and its local `.docs/` holds tree's and bfs's source: ruling #103 |
 | `asp` | find out | `Makefile:81–83`: "asp is the same binary under a second name"; `make install` symlinks it (`Makefile:121`) | v1 needs no second binary |
-| C aspen's golden suite | the oracle of record | live, not recorded: `tests/golden/run.sh` runs ~243 flag sets over 14 generated fixture trees in C, en_US.UTF-8 and C.UTF-8 against a tree 2.3.2 that `build-ref.sh` builds from tree's source; the lane pre-places the distribution's tree 2.3.2 binary at the path `build-ref.sh` checks first, so nothing clones or builds tree's source | the harness is per-binary, not per-option: the lane's `tools/oracle` runs its case list, fixtures and normalisations verbatim and classes each case v1 or not-yet |
+| C aspen's golden suite | the oracle of record | live, not recorded: `tests/golden/run.sh` runs 286 flag sets over 14 generated fixture trees in C, en_US.UTF-8 and C.UTF-8 against a tree 2.3.2 that `build-ref.sh` builds from tree's source; the lane pre-places the distribution's tree 2.3.2 binary at the path `build-ref.sh` checks first, so nothing clones or builds tree's source | the harness is per-binary, not per-option: the lane's `tools/oracle` runs its case list, fixtures and normalisations verbatim and classes each case v1 or not-yet |
 | kasumi | `/home` ~30 GB | 31 GB free, 16 cores, load ~2, podman 6.1.3, `archlinux:base-devel` present | none |
 
 ## 3. Prediction (before the first change)
@@ -112,8 +112,10 @@ and runs its scripts as they are.
   `patterns.sh`, `usage.sh`, `deviations.sh`, `structural.sh`: **0 v1
   reports**, and 1, 2, 1, 34, 16, 12 not-yet reports (their `-X`, v2
   option and `-H`/`-R`/`-l`/`--filelimit`/`--inodes`/`--condense` rows).
-- **Total: 308 agree / 0 differ / 616 not-yet**, on the native, release
-  and static binaries alike, on kasumi and in CI.
+- **Total: 308 agree / 0 differ / 616 not-yet**: on kasumi on the
+  native, release and static binaries; in CI on the release tier (linux,
+  in the container). On macOS against Homebrew's tree: 312 / 0 / 612
+  (macOS's en_US.UTF-8 collates by byte, so the four order cases agree).
 
 ### 4.2 The fixture oracle
 
@@ -186,11 +188,41 @@ exit 1, in every CI run and on kasumi.
 
 ### 4.9 CI runs
 
-(filled at hand-back)
+- Trunk `5f99a37`: push 39537470014 (`tier full`, green); nightly
+  39576928271 (green).
+- A partial dispatch on `618f140` (`-f jobs="linux macos"`, before the
+  PR existed): 39609891049, **green on both hosts**. Linux, in the
+  container: oracle 864 / 0 / 616 on native, release and static; golden
+  308 / 0 / 616; fuzz 400 runs, 0 differences; perf 1.10× and 1.61× (the
+  listing), `-s` 1.23× and 1.72×; static `9bd08d6d7114…`, 14,257,992
+  bytes, stripped 1,571,400, built twice to one digest (the runner's clang
+  and libc.a, so not kasumi's container's digest: each builder reproduces
+  its own); selftest five reds. macOS arm64 against Homebrew's tree
+  2.3.2: unit tests on three lanes, oracle 864 / 0 / 616, golden 312 / 0
+  / 612, fuzz 200 runs, 0 differences.
+- PR #1 at `5a88baa`: 39611478087, `tier pr` green.
 
 ### 4.10 The plants
 
-(filled at hand-back)
+Each a draft PR on top of ap00's head `5a88baa`, closed unmerged, seen red
+in its own pull-request run (RULES §7: on a new repository the PR run
+itself):
+
+- **The oracle**, PR #2 (`153b026`, branch `ap00-plant-oracle`): the
+  ASCII corner drawn `'--` instead of `` `-- ``. Run 39611570451, job
+  119261569696, went red on the oracle (native, release, static: 682
+  agree / 182 differ, the first `|   '-- beta` for `` |   `-- beta ``), the
+  golden suite (243 agree / 81 differ) and the fuzzer (10 differences in
+  26 runs) (steps 9, 10, 11, 12, 15); `tier pr` red.
+- **The perf row**, PR #3 (`99dad82`, branch `ap00-plant-perf`): the
+  name sort by selection, n²/2 comparisons on every input, the same
+  order. Run 39611577042, job 119261578036, went red on the perf step
+  alone (step 13): the 100,000-file listing at 2.96× C aspen (106.8 ms
+  against 36.1), while the oracle (864 / 0 / 616), the golden suite
+  (308 / 0 / 616) and the fuzzer (0 differences) stayed green; `tier pr`
+  red. A first version of the plant, an insertion sort, did not go red on
+  kasumi: tmpfs hands the names over already sorted once `read_level`
+  takes them from the end, and insertion sort is linear there.
 
 ## 5. Done-when
 
@@ -204,7 +236,8 @@ exit 1, in every CI run and on kasumi.
   directory (1.07–1.13×) and the 100,000-file tree (1.61–1.67×); `-s`
   measured (up to 2.13×), not gated.
 - [x] `tools/mkaspen` static, built twice, one digest (§4.7).
-- [ ] The plants seen red (§4.10).
+- [x] The plants seen red: PR #2, run 39611570451 (the oracle); PR #3,
+  run 39611577042 (the perf row); both closed unmerged (§4.10).
 - [ ] PR open with the five sections, shas as bullets, a test checklist;
   `tier pr` green and the `full-matrix` label at the final head; the
   lane audit (§4.9).
