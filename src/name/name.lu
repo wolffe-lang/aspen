@@ -41,14 +41,14 @@ fn byte_branch(mut o: out.Out, s: List[byte], from: int, to: int) {
     var i = from
     while i < to {
         let c = s[i] as int
-        if c >= 7 && c <= 13 {
-            out.c(mut o, 92)
+        if c > 32 && c < 127 && c != 92 {
+            (mut o.buf).push(s[i])
+        } else if c >= 7 && c <= 13 {
+            (mut o.buf).push(92 as byte)
             out.s(mut o, "abtnvfr"[c - 7..c - 6])
         } else if c == 92 || c == 32 {
-            out.c(mut o, 92)
-            out.c(mut o, c)
-        } else if c > 32 && c < 127 {
-            out.c(mut o, c)
+            (mut o.buf).push(92 as byte)
+            (mut o.buf).push(s[i])
         } else {
             octal(mut o, c)
         }
@@ -128,7 +128,7 @@ pub fn put(mut o: out.Out, s: List[byte], from: int, to: int, utf8: bool) {
         while i < to {
             let c = s[i] as int
             if c >= 32 && c < 127 {
-                out.c(mut o, c)
+                (mut o.buf).push(s[i])
             } else {
                 octal(mut o, c)
             }
