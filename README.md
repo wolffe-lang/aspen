@@ -64,8 +64,8 @@ C aspen itself: `tools/aspdiff`). What it does not do, named:
 
 ## Build
 
-The toolchain is fetched by digest (`wolf-toolchain.toml`): wolf 0.2.34,
-lupin 0.1.55, wolf-std `e036bec`.
+The toolchain is fetched by digest (`wolf-toolchain.toml`): wolf 0.2.35,
+lupin 0.1.56, wolf-std `2386522e`.
 
 ```sh
 tools/fetch-toolchain
