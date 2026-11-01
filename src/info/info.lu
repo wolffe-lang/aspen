@@ -3,20 +3,21 @@
 //! fillinfo/prot/psize/do_date"), and the pieces `-J` and `-X` print
 //! one by one.
 
-use clock
 use host
 use ent
 use opts
 use out
 use std.os.users
+use std.time
 use tfmt
+use zone
 
-/// What the columns need besides the options: the zone and the clock
-/// for the date, and the name caches for `-u`/`-g` (C aspen
-/// `src/idcache.c`: one lookup per id, the number when there is no
-/// name).
+/// What the columns need besides the options: the zone (its memo of
+/// std.time's lookups) and the clock for the date, and the name caches
+/// for `-u`/`-g` (C aspen `src/idcache.c`: one lookup per id, the number
+/// when there is no name).
 pub struct Cols {
-    zone: clock.Zone,
+    zone: zone.Memo,
     now: int,
     unames: Map[int, str],
     gnames: Map[int, str],
@@ -27,7 +28,7 @@ pub struct Cols {
 }
 
 /// Columns over zone `z` at `now`.
-pub fn cols(take z: clock.Zone, now: int, macos: bool) -> Cols {
+pub fn cols(take z: zone.Memo, now: int, macos: bool) -> Cols {
     Cols {
         zone: z,
         now: now,
@@ -292,48 +293,34 @@ pub fn put_psize(mut o: out.Out, human: bool, si: bool, size0: int) {
     (mut o.buf).push(units.bytes()[idx])
 }
 
-fn two(n: int) -> str {
-    if n < 10 then "0{n}" else "{n}"
-}
-
 /// tree's date (`src/render/fileinfo.c:52`): `--timefmt`'s format, or
 /// `"%b %e  %Y"` for a time in the future or more than six months of 31
 /// days ago, else `"%b %e %R"`, in the C locale's month names (aspen
-/// sets only LC_CTYPE and LC_COLLATE, `src/main.c:89`).
-pub fn date_bytes(o: opts.Opts, c: Cols, t: int) -> List[byte] {
+/// sets only LC_CTYPE and LC_COLLATE, `src/main.c:89`). The local time
+/// is std.time's (`zone`).
+pub fn date_bytes(o: opts.Opts, mut c: Cols, t: int) -> List[byte] {
+    let l = zone.at(mut c.zone, t)
     if o.has_timefmt {
-        return tfmt.format(o.timefmt, clock.tm_of(c.zone, t), c.macos)
+        return tfmt.format(o.timefmt, tfmt.tm_of(l, t), c.macos)
     }
     var r = List[byte]()
-    for x in date(c.zone, c.now, t).bytes() {
+    for x in date(l, c.now, t).bytes() {
         (mut r).push(x)
     }
     r
 }
 
-/// The default date form.
-pub fn date(z: clock.Zone, now: int, t: int) -> str {
-    let months = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-    ]
-    let (y, m, d, hh, mm) = clock.fields(z, t)
-    let day = if d < 10 then " {d}" else "{d}"
+/// The default date form of `t`, whose local time is `l`, at `now`:
+/// std.time's `format` for the month, the day and the clock; the year as
+/// its own digits, which is glibc's and POSIX's `%Y` (std's pads it to
+/// four).
+pub fn date(l: time.Local, now: int, t: int) -> str {
     let six = 6 * 31 * 24 * 60 * 60
     if t > now || t + six < now {
-        return "{months[m - 1]} {day}  {y}"
+        let md = time.format(l, "%b %e") else ""
+        return "{md}  {l.year}"
     }
-    "{months[m - 1]} {day} {two(hh)}:{two(mm)}"
+    time.format(l, "%b %e %R") else ""
 }
 
 /// Whether any bracket column is on (`src/render/fileinfo.c:79`).
@@ -398,7 +385,7 @@ pub fn put_fill(
     if opt.dateflag {
         (mut o.buf).push(32 as byte)
         let t = if opt.ctimeflag then st.ctime else st.mtime
-        for x in date_bytes(opt, c, t) {
+        for x in date_bytes(opt, mut c, t) {
             (mut o.buf).push(x)
         }
     }

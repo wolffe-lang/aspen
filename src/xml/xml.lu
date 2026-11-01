@@ -81,7 +81,7 @@ fn fill(mut x: Xml, o: opts.Opts, st: ent.Meta, ids: ent.Ids) {
     }
     if o.dateflag {
         out.s(mut x.o, " time=\"")
-        let d = info.date_bytes(o, x.cols, if o.ctimeflag then st.ctime else st.mtime)
+        let d = info.date_bytes(o, mut x.cols, if o.ctimeflag then st.ctime else st.mtime)
         out.bytes(mut x.o, d, 0, d.len)
         out.c(mut x.o, 34)
     }

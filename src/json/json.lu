@@ -136,7 +136,7 @@ fn fill(mut j: Json, o: opts.Opts, st: ent.Meta, ids: ent.Ids) {
     }
     if o.dateflag {
         out.s(mut j.o, ",\"time\":\"")
-        let d = info.date_bytes(o, j.cols, if o.ctimeflag then st.ctime else st.mtime)
+        let d = info.date_bytes(o, mut j.cols, if o.ctimeflag then st.ctime else st.mtime)
         out.bytes(mut j.o, d, 0, d.len)
         out.c(mut j.o, 34)
     }
