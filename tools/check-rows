@@ -1,0 +1,51 @@
+#!/bin/sh
+# check-rows — the census of src/clock_test.lu's rows (tests/clock-rows.tsv).
+#
+#   tools/check-rows
+#
+# src/clock went when std.time replaced it (ap02a, aspen#12); its test's
+# 21 rows were each kept at a call site or dropped for the std test that
+# covers them. A kept row must still stand in its file, by its message as
+# a string literal; the census must still hold all 21. Every row is
+# printed; exit 1 when a kept row is missing or the census is short.
+# tools/check-test runs it.
+set -u
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+census=$ASPEN_ROOT/tests/clock-rows.tsv
+want=21
+tab=$(printf '\t')
+n=0
+kept=0
+dropped=0
+missing=0
+while IFS="$tab" read -r row where file cover; do
+    case "$row" in '' | '#'*) continue ;; esac
+    n=$((n + 1))
+    case "$where" in
+    kept)
+        if [ -f "$ASPEN_ROOT/$file" ] && grep -qF "\"$row\"" "$ASPEN_ROOT/$file"; then
+            kept=$((kept + 1))
+            echo "check-rows: kept [$row] in $file (std cover: $cover)"
+        else
+            missing=$((missing + 1))
+            echo "check-rows: MISSING [$row]: not in $file (std cover: $cover)"
+        fi
+        ;;
+    std)
+        dropped=$((dropped + 1))
+        echo "check-rows: dropped [$row]: wolf-std's $file covers it ($cover)"
+        ;;
+    *)
+        missing=$((missing + 1))
+        echo "check-rows: MISSING [$row]: '$where' is neither kept nor std"
+        ;;
+    esac
+done <"$census"
+echo "check-rows: $kept kept / $dropped dropped for std / $missing missing, of $n rows"
+fail=0
+[ "$missing" = 0 ] || fail=1
+if [ "$n" != "$want" ]; then
+    echo "check-rows: the census holds $n rows; src/clock_test.lu had $want"
+    fail=1
+fi
+exit $fail
