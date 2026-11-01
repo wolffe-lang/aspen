@@ -21,11 +21,13 @@ use std.time
 
 /// The zone's spelling for `time.local_in`: `$TZ` as it is, or the colon
 /// path of `/etc/localtime` when it is unset (what std's `local` reads).
-/// A value that is not UTF-8 cannot name a file std can open: UTC.
+/// A value that is not UTF-8 names no zone, and tree prints it as UTC with
+/// an empty name (measured): it is spelled `?`, which no zone and no rule
+/// is, whose leading letters are none.
 pub fn spelling() -> str {
     env_get("TZ") else |e| match e {
         missing => ":/etc/localtime",
-        utf8 => "",
+        utf8 => "?",
     }
 }
 
@@ -52,27 +54,83 @@ pub fn local_at(tz: str, t: int) -> time.Local {
     }
 }
 
-/// `local_at` over one zone, the last lookup of each of 64 slots by the
-/// second kept (direct-mapped: exact, and small enough that the stat
-/// pool's per-task copy of the columns stays cheap).
+/// Whether std reads zone `tz`.
+fn reads(tz: str) -> bool {
+    var ok = true
+    let _ = time.local_in(tz, 0) else |_| {
+        ok = false
+        local_at("", 0)
+    }
+    ok
+}
+
+/// The name tree prints (`%Z`) for a zone nothing can load, at UTC: the
+/// value's leading ASCII letters, one leading colon dropped (glibc 2.44
+/// under tree 2.3.2, measured: `nonsense`, `Nowhere/City` -> `Nowhere`,
+/// `:times/leap` -> `times`, a value that is not UTF-8 -> none).
+fn lead_name(tz: str) -> str {
+    let s = if tz.starts_with(":") then tz[1..] else tz
+    var n = 0
+    while n < s.len {
+        let c = s.bytes()[n] as int
+        if !(c >= 65 && c <= 90 || c >= 97 && c <= 122) {
+            break
+        }
+        n += 1
+    }
+    s[0..n]
+}
+
+/// The zone aspen prints in, resolved once from a `spelling` the way the
+/// C library resolves it (tree's answers, measured), then looked up by
+/// std per second: the slots keep the last lookup of each of 64 seconds
+/// (direct-mapped: exact, and small enough that the stat pool's per-task
+/// copy of the columns stays cheap).
+/// - std reads the zone: it, as it is.
+/// - A POSIX DST rule given without its change dates (`XST3XDT`): std
+///   guesses none, glibc takes the US one, as src/clock did:
+///   `,M3.2.0,M11.1.0` is added.
+/// - Nothing loads it: UTC, named as tree names it (`lead_name`); unset
+///   or empty is UTC by name.
 pub struct Memo {
     tz: str,
+    named: bool,
+    name: str,
     keys: List[int],
     vals: List[time.Local],
     used: List[bool],
 }
 
-/// A memo over zone `tz`; its slots are made at the first lookup.
+/// A memo over zone `tz` (a `spelling`); its slots are made at the first
+/// lookup.
 pub fn memo(tz: str) -> Memo {
+    var r = tz
+    var named = false
+    var name = ""
+    if tz.len > 0 && !reads(tz) {
+        let plain = (tz.find(",") else -1) < 0 && (tz.find("/") else -1) < 0 && !tz.starts_with(":")
+        if plain && reads(tz + ",M3.2.0,M11.1.0") {
+            r = tz + ",M3.2.0,M11.1.0"
+        } else {
+            r = ""
+            if tz != ":/etc/localtime" {
+                named = true
+                name = lead_name(tz)
+            }
+        }
+    }
     Memo {
-        tz: tz,
+        tz: r,
+        named: named,
+        name: name,
         keys: List[int](),
         vals: List[time.Local](),
         used: List[bool](),
     }
 }
 
-/// `local_at(m.tz, t)`, from the memo when its slot holds `t`.
+/// The local time of `t` in the memo's zone, from its slot when the slot
+/// holds `t`.
 pub fn at(mut m: Memo, t: int) -> time.Local {
     if m.used.len == 0 {
         var k = 0
@@ -90,7 +148,10 @@ pub fn at(mut m: Memo, t: int) -> time.Local {
     if m.used[s] && m.keys[s] == t {
         return copy m.vals[s]
     }
-    let l = local_at(m.tz, t)
+    var l = local_at(m.tz, t)
+    if m.named {
+        l.abbrev = m.name
+    }
     m.keys[s] = t
     m.vals[s] = copy l
     m.used[s] = true
@@ -102,12 +163,7 @@ pub fn at(mut m: Memo, t: int) -> time.Local {
 /// have read is TZif with leap records. Any other refusal is UTC, as the
 /// C library's (a name it cannot load, a malformed rule or file).
 pub fn refusal(tz: str) -> str {
-    var ok = true
-    let _ = time.local_in(tz, 0) else |_| {
-        ok = false
-        local_at("", 0)
-    }
-    if ok {
+    if reads(tz) {
         return ""
     }
     let path = file_of(tz)
