@@ -2,6 +2,7 @@
 # oracle — aspen against tree 2.3.2 on the generated fixtures, byte for byte.
 #
 #   tools/oracle [--bin ASPEN] [--only OPT] [--locales "C C.UTF-8"] [--sets FILE]
+#                [--tz TZ] [--ref ASPEN]
 #
 # For every set of tests/oracle/sets.tsv (one invocation per line), every
 # fixture tests/fixtures/mkfixtures writes, and every locale, `tree -n ARGS
@@ -30,34 +31,57 @@
 # user: the fixtures hold a FIFO and 0000 directories (RULES §5). The
 # locale is LC_ALL (C by default, C.UTF-8 for the UTF-8 line set and
 # names) and TZ is UTC.
+#
+# `--tz TZ` runs both sides under that TZ instead (`(unset)` unsets it,
+# `(empty)` sets it empty); tools/tzoracle drives it over
+# tests/oracle/tz.tsv. `--ref ASPEN` compares against another aspen
+# build instead of tree (no tree is needed): the same bytes before and
+# after a change, on a host with no tree (ap02a's std.time adoption).
 set -u
 ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 bin=$ASPEN_ROOT/target/release/aspen
 only=""
 locales="C C.UTF-8"
 sets=$ASPEN_ROOT/tests/oracle/sets.tsv
+tz=UTC
+ref=""
 while [ $# -gt 0 ]; do
     case "$1" in
     --bin) bin=$2; shift 2 ;;
     --only) only=$2; shift 2 ;;
     --locales) locales=$2; shift 2 ;;
     --sets) sets=$2; shift 2 ;;
+    --tz) tz=$2; shift 2 ;;
+    --ref) ref=$2; shift 2 ;;
     *) echo "oracle: unknown argument $1" >&2; exit 2 ;;
     esac
 done
 case "$bin" in /*) ;; *) bin=$(pwd)/$bin ;; esac
 [ -x "$bin" ] || { echo "oracle: no aspen at $bin" >&2; exit 2; }
-tv=$(tree --version 2>/dev/null | head -1)
-case "$tv" in
-"tree v2.3.2 "*) echo "oracle: the oracle is $tv" ;;
-*) echo "oracle: REFUSED — tree is '$tv', the oracle is tree v2.3.2" >&2; exit 2 ;;
-esac
+if [ -n "$ref" ]; then
+    case "$ref" in /*) ;; *) ref=$(pwd)/$ref ;; esac
+    [ -x "$ref" ] || { echo "oracle: no reference aspen at $ref" >&2; exit 2; }
+    oracle=$ref
+    echo "oracle: the reference is $ref ($("$ref" --version))"
+else
+    oracle=tree
+    tv=$(tree --version 2>/dev/null | head -1)
+    case "$tv" in
+    "tree v2.3.2 "*) echo "oracle: the oracle is $tv" ;;
+    *) echo "oracle: REFUSED — tree is '$tv', the oracle is tree v2.3.2" >&2; exit 2 ;;
+    esac
+fi
 echo "oracle: aspen is $bin ($("$bin" --version))"
 if [ "$(id -u)" = 0 ]; then
     echo "oracle: REFUSED — running as root, a 0000 directory is not denied (run in the container as a user)" >&2
     exit 2
 fi
-export TZ=UTC
+case "$tz" in
+"(unset)") unset TZ ;;
+"(empty)") export TZ= ;;
+*) export TZ="$tz" ;;
+esac
+echo "oracle: TZ is $tz"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/aspen-oracle.XXXXXX") || exit 2
 trap 'chmod -R u+rwx "$work" 2>/dev/null; rm -rf "$work"' EXIT INT TERM
@@ -138,7 +162,7 @@ while IFS="$tab" read -r id cls args rts; do
     for lc in $locales; do
         for r in $rlist; do
             [ "$r" = "-" ] && r=""
-            run t tree "$lc" "$r" "$args"
+            run t "$oracle" "$lc" "$r" "$args"
             run a "$bin" "$lc" "$r" "$args"
             trc=$(cat "$work/t.rc")
             arc=$(cat "$work/a.rc")
