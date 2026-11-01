@@ -56,7 +56,7 @@ patmatch()"), `src/info.h` 1, `src/render/html.c` 2, `src/render/html.h`
 | `src/charset.c`, `.h` | 157 + 35 | the line-drawing table, three widths, comment glyphs | `src/lines` (the names in `src/opts`) | v1, ap01 |
 | `src/render/unix.c`, `.h` | 418 + 43 | the text renderer | `src/text` | v1, ap01 |
 | `src/render/name.c`, `.h` | 129 + 21 | name escaping (printit), `-q -N -Q` | `src/name` | v1, ap01 |
-| `src/render/fileinfo.c`, `.h` | 130 + 28 | `[inode dev perm user group size date]` | `src/info`, `src/clock`, `src/tfmt` | v1, ap01 |
+| `src/render/fileinfo.c`, `.h` | 130 + 28 | `[inode dev perm user group size date]` | `src/info`, `src/tfmt`, `src/zone` (wolf-std's `std.time` for `localtime_r`, since ap02a; `src/clock` before) | v1, ap01, ap02a |
 | `src/render/json.c`, `.h` | 349 + 25 | `-J` | `src/json` | v1, ap01 |
 | `src/render/xml.c`, `.h` | 325 + 24 | `-X` | `src/xml` | ap01 |
 | `src/render/html.c`, `.h`, `src/render/escape.c`, `.h` | 354 + 29, 51 + 20 | `-H`, `-T`, `--nolinks`, URL and HTML encoding | `src/html`, `src/text` (`url_encode`) | ap01 |
