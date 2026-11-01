@@ -81,6 +81,10 @@ fn write(path: str, b: List[byte]) {
 }
 
 fn main() {
+    // the zone database is the working tree, as std's own tests have it:
+    // lupin serves the files inside its tree alone, and no row here needs
+    // a host zone file (tools/tzoracle reads those)
+    env_set("TZDIR", ".") else |_| {}
     // src/clock_test.lu's EST5EDT rows: 2026's DST runs from March 8 07:00
     // UTC to November 1 06:00 UTC
     let ny = "EST5EDT,M3.2.0,M11.1.0"
@@ -133,13 +137,21 @@ fn main() {
     assert(zone.refusal(":zone-test-plain.tmp") == "", "a file without leap records is not refused")
     write("zone-test-leap1.tmp", v1(1))
     let r1 = zone.refusal(":zone-test-leap1.tmp")
-    assert(r1.starts_with("aspen: TZ=:zone-test-leap1.tmp: "), "a leap-second file is refused by name")
+    assert(
+        r1.starts_with("aspen: TZ=:zone-test-leap1.tmp: "),
+        "a leap-second file is refused by name",
+    )
     assert(r1.ends_with("\n") && (r1.find("leap") else -1) > 0, "the refusal says why")
     write("zone-test-leap2.tmp", v2(1))
     assert(zone.refusal(":zone-test-leap2.tmp") != "", "a v2 file's 64-bit leap records are read")
     write("zone-test-slim.tmp", v2(0))
     assert(zone.refusal(":zone-test-slim.tmp") == "", "a v2 file without them is not refused")
-    for p in ["zone-test-plain.tmp", "zone-test-leap1.tmp", "zone-test-leap2.tmp", "zone-test-slim.tmp"] {
+    for p in [
+        "zone-test-plain.tmp",
+        "zone-test-leap1.tmp",
+        "zone-test-leap2.tmp",
+        "zone-test-slim.tmp",
+    ] {
         fs_remove(p) else |_| {}
     }
 }
