@@ -16,7 +16,6 @@
 //! so aspen also stats only for a flag that needs metadata, a symlink,
 //! or an entry whose type the host did not give.
 
-use clock
 use color
 use ent
 use fromfile
@@ -33,13 +32,14 @@ use std.os
 use text
 use vers
 use xml
+use zone
 
 /// What a walk is built from, kept so `-R` can build another for a
 /// subtree's `00Tree.html` (`src/render/unix.c:396`).
 pub struct Env {
     utf8: bool,
     macos: bool,
-    zone: clock.Zone,
+    zone: zone.Memo,
     now: int,
     colors: color.Colors,
     debug: bool,

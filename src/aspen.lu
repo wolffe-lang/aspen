@@ -6,13 +6,13 @@
 //! point (C aspen `src/main.c`): parse tree's command line, open `-o
 //! FILE`, decide colour, pick the renderer, walk every root.
 
-use clock
 use color
 use locale
 use opts
 use out
 use std.time
 use walk
+use zone
 
 /// Whether `--gitfile`/`--infofile`'s file can be read (tree's load).
 fn readable(path: str) -> bool {
@@ -61,6 +61,17 @@ fn main() -> int {
         out.flush(mut se)
         return p.stop
     }
+    // a time column reads the zone: a leap-second zone, which std.time
+    // cannot apply at this pin, is refused by name before anything is
+    // written (aspen#13), as --acl is
+    let tz = if p.o.dateflag then zone.spelling() else ""
+    let refused = zone.refusal(tz)
+    if refused.len > 0 {
+        var se = out.to_fd(2)
+        out.s(mut se, refused)
+        out.flush(mut se)
+        return 2
+    }
     var roots = copy p.roots
     if roots.len == 0 {
         (mut roots).push(".")
@@ -98,12 +109,11 @@ fn main() -> int {
         }
     }
     let utf8 = locale.utf8_ctype()
-    let zone = if o.dateflag then clock.local() else clock.utc()
     let now = time.unix_ms() / 1000
     let env = walk.Env {
         utf8: utf8,
         macos: macos,
-        zone: zone,
+        zone: zone.memo(tz),
         now: now,
         colors: colors,
         debug: debug,
