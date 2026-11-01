@@ -2,7 +2,8 @@
 # under (every set of sets.tsv that prints a time: -D, --timefmt), over
 # main/ and times/ (tests/fixtures/mkfixtures), one value per line:
 #   id <TAB> class <TAB> TZ <TAB> needs <TAB> env
-# TZ `(unset)` unsets it, `(empty)` sets it empty. `needs` is a file the
+# TZ `(unset)` unsets it, `(empty)` sets it empty, `(non-utf8)` sets it to
+# the byte 0xff. `needs` is a file the
 # row needs on the host (`-` for none): a row whose file is missing is a
 # loud, counted SKIP (macOS has no right/ or posix/ zones). `env` is one
 # TZDIR=VALUE for both sides (`-` for none; TZDIR is the only one).
@@ -10,6 +11,9 @@
 # build under --ref (the bytes before and after a change).
 # class tree: aspen agrees with tree; under --ref the row is not compared,
 # because aspen changed there on purpose (the comment above it says why).
+# class ref: aspen agrees with the reference build; against tree the row
+# runs and its count is printed, not gated: the C library does something
+# there aspen does not copy (the comment above it says what).
 # class refuse: a leap-second zone (aspen#13). aspen refuses it by name:
 # status 2, nothing on stdout, one diagnostic naming the zone; tree's
 # answer is printed for the record; a listing with no time column
@@ -34,10 +38,19 @@ rule-ny	v1	EST5EDT,M3.2.0,M11.1.0	-	-
 rule-syd	v1	AEST-10AEDT,M10.1.0,M4.1.0/3	-	-
 rule-julian	v1	AAA3BBB,J60/0,J300/0	-	-
 quoted	v1	<+0530>-5:30	-	-
-norule	v1	XST3XDT	-	-
-junk	v1	nonsense	-	-
-missing	v1	Nowhere/City	-	-
-colon-rel	v1	:times/leap	-	-
+# a DST rule without its dates: aspen adds the US rule, as src/clock did;
+# glibc applies its posixrules file's transitions instead, which moves the
+# DST edges' hours and, past 2037, prints that file's own zone (New York's
+# EDT in 2100 under XST3XDT, measured)
+norule	ref	XST3XDT	-	-
+norule-ny	ref	EST5EDT4	-	-
+# nothing loads these: UTC, named by the value's leading letters as tree
+# names them (glibc 2.44, measured); src/clock named them UTC
+junk	tree	nonsense	-	-
+missing	tree	Nowhere/City	-	-
+colon-rel	tree	:times/leap	-	-
+letters	tree	ABC	-	-
+non-utf8	tree	(non-utf8)	-	-
 # TZDIR names the database: glibc and std.time read it, src/clock never did
 tzdir	tree	Kolkata	/usr/share/zoneinfo/Asia/Kolkata	TZDIR=/usr/share/zoneinfo/Asia
 right-ny	refuse	right/America/New_York	/usr/share/zoneinfo/right/America/New_York	-
