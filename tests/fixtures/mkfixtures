@@ -20,6 +20,12 @@
 #   empty/    an empty directory.
 #   afile     a plain file (a root that is not a directory).
 #   lnkroot   a symlink to a directory (a root that is one).
+#   times/    one file per instant the TZ runs need (tools/tzoracle; no
+#             set of sets.tsv lists it): the 2026 DST edges of New York,
+#             Sydney, Lord Howe (30 minutes), St John's and London, each
+#             with the second before; aspen#13's leap-zone instant; the
+#             second before the epoch; New York's LMT (1883); 2^31; and
+#             2100, past every zone file's last transition (the footer).
 #
 # Times are written in UTC (TZ=UTC here), and the oracle runs with TZ=UTC.
 set -eu
@@ -39,6 +45,12 @@ stamp() {
     else
         date -u -r "$1" +%Y%m%d%H%M.%S
     fi
+}
+at() { # FILE EPOCH: the file's times at epoch seconds EPOCH (BSD touch has no -d @N)
+    if touch -h -d "@$2" "$1" 2>/dev/null; then
+        return 0
+    fi
+    python3 -I -c 'import os, sys; t = int(sys.argv[2]); os.utime(sys.argv[1], (t, t), follow_symlinks=False)' "$1" "$2"
 }
 sized() { # FILE BYTES: a file of that size (sparse past 0)
     : >"$1"
@@ -166,6 +178,37 @@ ln -s ../real "$x/two/toreal"
 ln -s real "$x/rlink"
 printf '*.txt\n' >"$root/.gitignore"
 printf 'extra\n\tThe extra fixture.\n*.c\n\tC from the explicit file.\n' >"$root/extra.info"
+
+# times: the TZ runs' instants (the header), one file each, named by them
+t="$root/times"
+mkdir -p "$t"
+while read -r name epoch; do
+    printf 'x' >"$t/$name"
+    at "$t/$name" "$epoch"
+done <<'TIMES'
+ny-start-1 1772953199
+ny-start 1772953200
+ny-end-1 1793512799
+ny-end 1793512800
+syd-end-1 1775318399
+syd-end 1775318400
+syd-start-1 1791043199
+syd-start 1791043200
+lhw-end-1 1775314799
+lhw-end 1775314800
+lhw-start-1 1791041399
+lhw-start 1791041400
+stj-start-1 1772947799
+stj-start 1772947800
+lon-start-1 1774745999
+lon-start 1774746000
+leap 1783000020
+pre-epoch -1
+lmt -2717650801
+y2038 2147483648
+y2100 4118083200
+TIMES
+at "$t" 1783000020
 
 # the inputs of --fromfile and --fromtabfile (tools/oracle lists them as
 # the roots of those sets)
