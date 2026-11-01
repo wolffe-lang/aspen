@@ -1,0 +1,78 @@
+ap02a prediction, before implementation
+
+Replacing clock with std.time should preserve ordinary POSIX/TZif calendar
+rows. Leap-aware right/America/New_York is a suspected blocker: the pinned
+std refuses its leap table, whereas the old clock accepts it and ignores
+the leap correction. Measure tree 2.3.2 and pinned C aspen first; stop and
+report any incompatibility, without a fallback or altered oracle.
+
+A completed migration must retain the uncovered DST-boundary call-site
+rows. Removing one must fail the named guard in ap02a-plant-*.
+
+-- Corrected at the relaunch, 2026-11-01 20:18Z, base bb3d5647 (wolf 0.2.36,
+lupin 0.1.58, std 78b9d3cb bundled) --
+
+What 0.2.36 changes in the text above: nothing for right/ zones. The std
+it bundles, 78b9d3cb (2026-10-23), predates sc74's fix for wolf-std#105
+(wolf-std#107, trunk fad69dfe, 2026-10-25): git merge-base says fad69dfe
+is not an ancestor of 78b9d3cb, and std/time/local.lu:458 still returns
+`zone` for a nonzero leap count, which local() (:722) turns into UTC. So
+the gap at this pin is wolf-std's, and aspen#13 is closed here the
+contract's second way: aspen refuses a leap-second zone by name rather
+than print a wrong time.
+
+Expected rows:
+
+1. right/ zones (aspen#13), Linux container, fixture mtime Unix
+   1783000020, TZ=right/America/New_York:
+   - tree 2.3.2 and C aspen (aspen.pin) print 09:46:33 EDT -0400 under
+     --timefmt '%T %Z %z', and [Jul  2 09:46] under -D (as on kasumi on
+     2026-10-25);
+   - aspen at bb3d5647 (src/clock) prints 09:47:00, 27 s late;
+   - a probe of std 78b9d3cb's local_in answers `zone`, local() 13:47:00
+     +0000 (UTC);
+   - a probe of std trunk (>= fad69dfe) answers 09:46:33 -0400: the fix
+     exists upstream and is not released in any wolf aspen can pin;
+   - aspen after this lane: status 2 and one diagnostic line naming the
+     zone, nothing on stdout, under -D/--timefmt/-J -D/-X -D; with no time
+     column the TZ is never read and the listing is unchanged.
+
+2. Byte identity, ordinary zones: for every time set of
+   tests/oracle/sets.tsv (-D, --timefmt, -c -D, the -J/-X/-H time fields)
+   in C and C.UTF-8 and under each TZ case of a new list (unset with and
+   without /etc/localtime, empty, UTC, :file, an absolute path,
+   America/New_York, Australia/Sydney, Australia/Lord_Howe, Asia/Kolkata,
+   America/St_Johns, POSIX rules with explicit changes, a quoted name, a
+   junk value), aspen after == aspen before == tree. Fixture instants on
+   the 2026 DST edges of New York and Sydney, a pre-1970 instant, and one
+   past the last transition (the footer's rule) are added for these runs.
+
+3. Expected std/clock differences to measure, not assume:
+   - a DST string with no change rule and no file of its name (e.g.
+     XST3XDT): the old clock applies M3.2.0,M11.1.0; std refuses (UTC).
+     Expect before == tree only where glibc's default rule is the same;
+     if after != tree it is reported (R-list), not hidden;
+   - $TZDIR: std reads it, the old clock never did; expect after == tree
+     and before != tree when TZDIR names another database;
+   - TZ precedence: std parses a complete POSIX rule before the
+     database; the old clock read the file first. Expect no visible
+     difference for real names (GMT0, UTC0, EST5EDT).
+
+4. Cost: std.time re-reads $TZ and the zone file on every call (its
+   header: no cache). Expect a -D listing of tree100k to slow by the
+   per-call cost (estimate 5-30 us native per entry); measured against
+   the old clock and C aspen, and decided as a ruling if it exceeds the
+   2x gate's spirit.
+
+5. Rows: src/clock_test.lu's 25 assertions are each kept at a call site
+   (info_test, tfmt_test, a new zone_test) or dropped with the std test
+   that covers it named; a census (tests/clock-rows.tsv, checked by
+   tools/check-rows) holds the mapping, and ap02a-plant-* removes one
+   uncovered DST-edge row and is red by that row's name.
+
+6. Line glyphs: aspen picks the UTF-8 set exactly when the locale names a
+   UTF-8 codeset the C library would load, TREE_CHARSET=UTF-8 overrides,
+   and PAX's missing LANG is pax#184. Expect also: glibc does not build
+   C.UTF-8 in (it must be installed), so LANG=C.UTF-8 on a host without
+   /usr/lib/locale/C.utf8 prints ASCII in tree and in aspen alike; measured
+   in the container with the locale directory removed.
