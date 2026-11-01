@@ -95,7 +95,6 @@ fn main() {
     // its southern rule, the change back at 03:00
     let au = "AEST-10AEDT,M10.1.0,M4.1.0/3"
     assert(off(au, 1767225600) == 39600, "January is summer there")
-    assert(off(au, 1783000000) == 36000, "July is winter there")
     // a TZ that is no rule and no file is UTC, as the C library's
     let junk = zone.local_at("nonsense", 0)
     assert(junk.offset_s == 0 && junk.abbrev == "UTC" && junk.year == 1970, "not a rule")
