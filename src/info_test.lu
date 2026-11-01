@@ -3,8 +3,13 @@
 //! date's two forms, --si's rounding of an inexact quotient, the
 //! low 32 bits tree prints an id with.
 
-use clock
 use info
+use zone
+
+/// The default date of `t` at `now`, in UTC.
+fn utc_date(now: int, t: int) -> str {
+    info.date(zone.local_at("", t), now, t)
+}
 
 fn main() {
     assert(info.psize(false, false, 0) == "           0", "-s pads to 11")
@@ -48,17 +53,27 @@ fn main() {
     assert(info.prot(3, 511) == "lrwxrwxrwx", "a link")
     assert(info.prot(4, 420) == "prw-r--r--", "a fifo")
     assert(info.prot(5, 493) == "srwxr-xr-x", "a socket")
-    let z = clock.utc()
     let now: int = 1792000000
     // 2001-02-03 04:05:00 UTC: older than six months
-    assert(info.date(z, now, 981173100) == "Feb  3  2001", "an old date")
+    assert(utc_date(now, 981173100) == "Feb  3  2001", "an old date")
     // now is 2026-10-14 17:46:40 UTC; a day before: the recent form
-    assert(info.date(z, now, now - 86400) == "Oct 13 17:46", "a recent date")
+    assert(utc_date(now, now - 86400) == "Oct 13 17:46", "a recent date")
     // in the future: the year form
-    assert(info.date(z, now, now + 3600) == "Oct 14  2026", "a future date")
+    assert(utc_date(now, now + 3600) == "Oct 14  2026", "a future date")
     // six months of 31 days ago, and a second more
-    assert(info.date(z, now, now - 16070400) == "Apr 11 17:46", "at the boundary")
-    assert(info.date(z, now, now - 16070401) == "Apr 11  2026", "past it")
+    assert(utc_date(now, now - 16070400) == "Apr 11 17:46", "at the boundary")
+    assert(utc_date(now, now - 16070401) == "Apr 11  2026", "past it")
+    // the year as its own digits (glibc's and POSIX's %Y, not std's four)
+    assert(utc_date(now, -30610224000) == "Jan  1  1000", "the year 1000")
+    assert(utc_date(now, -30641760000) == "Jan  1  999", "a three-digit year")
+    // a zone's offset moves the clock and the day: New York's DST edge
+    let ny = "EST5EDT,M3.2.0,M11.1.0"
+    let edge: int = 1772953200
+    assert(
+        info.date(zone.local_at(ny, edge - 1), edge, edge - 1) == "Mar  8 01:59",
+        "the second before DST",
+    )
+    assert(info.date(zone.local_at(ny, edge), edge, edge) == "Mar  8 03:00", "DST's first second")
     assert(info.int32(4294967294) == -2, "nobody's id is -2 under %d")
     assert(info.int32(1000) == 1000, "an ordinary id")
 }
