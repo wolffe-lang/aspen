@@ -5,10 +5,13 @@
 //! The character type is UTF-8 when the locale the environment names
 //! (`LC_ALL`, else `LC_CTYPE`, else `LANG`; the first that is set and not
 //! empty) has the codeset UTF-8 AND is one the C library would load:
-//! `C.UTF-8` is built into glibc (2.35 and later); any other name must
-//! be installed (`/usr/lib/locale/<name>/LC_CTYPE`, or the name in
-//! `/usr/lib/locale/locale-archive`; on macOS `/usr/share/locale/<name>`).
-//! A name that is not installed leaves `setlocale` at "C", as glibc does.
+//! every name must be installed (`/usr/lib/locale/<name>/LC_CTYPE`, or
+//! the name in `/usr/lib/locale/locale-archive`; on macOS
+//! `/usr/share/locale/<name>`). `C.UTF-8` too: glibc ships it as locale
+//! data (`/usr/lib/locale/C.utf8`), not in the library; with that
+//! directory removed, tree 2.3.2 under glibc 2.44 draws ASCII lines for
+//! `LANG=C.UTF-8` (measured, ap02a). A name that is not installed leaves
+//! `setlocale` at "C", as glibc does.
 //!
 //! Collation is NOT carried: v1 sorts by byte in every locale, which is
 //! what tree does in C and C.UTF-8 (their `strcoll` is `strcmp`,
