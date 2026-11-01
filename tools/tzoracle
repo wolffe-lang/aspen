@@ -1,0 +1,153 @@
+#!/bin/sh
+# tzoracle — aspen's time columns under every TZ of tests/oracle/tz.tsv.
+#
+#   tools/tzoracle [--bin ASPEN] [--ref ASPEN] [--locales "C C.UTF-8"] [--zones FILE]
+#
+# The time sets are every set of tests/oracle/sets.tsv that prints a time
+# (a short option cluster holding D, or --timefmt), run over main/ and
+# times/ (tests/fixtures/mkfixtures). For each TZ value, tools/oracle
+# --tz runs them against tree 2.3.2, or with --ref against another aspen
+# build: the same bytes before and after a change, on a host with no tree
+# (the Mac). A `refuse` row is checked here instead: aspen exits 2 with
+# nothing on stdout and one diagnostic naming the zone, for every time
+# set; the oracle's own line for times/leap is printed for the record;
+# and the `default` set, which reads no time, still agrees.
+#
+# Prints each row's `N agree / M differ`, every SKIP, and the totals
+# `tzoracle: N agree / M differ / K skipped`; exit 1 when anything
+# differs, 2 when the harness cannot run. Run it where tools/oracle runs
+# (tools/in-container on Linux, as a non-root user).
+set -u
+ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
+bin=$ASPEN_ROOT/target/release/aspen
+ref=""
+locales="C C.UTF-8"
+zones=$ASPEN_ROOT/tests/oracle/tz.tsv
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --bin) bin=$2; shift 2 ;;
+    --ref) ref=$2; shift 2 ;;
+    --locales) locales=$2; shift 2 ;;
+    --zones) zones=$2; shift 2 ;;
+    *) echo "tzoracle: unknown argument $1" >&2; exit 2 ;;
+    esac
+done
+case "$bin" in /*) ;; *) bin=$(pwd)/$bin ;; esac
+[ -x "$bin" ] || { echo "tzoracle: no aspen at $bin" >&2; exit 2; }
+if [ -n "$ref" ]; then
+    case "$ref" in /*) ;; *) ref=$(pwd)/$ref ;; esac
+    [ -x "$ref" ] || { echo "tzoracle: no reference aspen at $ref" >&2; exit 2; }
+    against="--ref $ref"
+    oracle=$ref
+else
+    against=""
+    oracle=tree
+fi
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/aspen-tzoracle.XXXXXX") || exit 2
+trap 'chmod -R u+rwx "$work" 2>/dev/null; rm -rf "$work"' EXIT INT TERM
+tab=$(printf '\t')
+awk -F'\t' 'BEGIN { OFS = "\t" }
+    /^#/ || NF < 2 { next }
+    {
+        n = split($3, w, " ")
+        hit = 0
+        for (i = 1; i <= n; i++)
+            if (w[i] ~ /^--timefmt/ || (w[i] ~ /^-[^-]/ && w[i] ~ /D/)) hit = 1
+        if (hit) print $1, $2, $3, "main times"
+    }' "$ASPEN_ROOT/tests/oracle/sets.tsv" >"$work/time-sets.tsv"
+printf 'default\tv1\t\tmain times\n' >"$work/plain-set.tsv"
+nsets=$(wc -l <"$work/time-sets.tsv" | tr -d ' ')
+echo "tzoracle: $nsets time sets of sets.tsv, over main/ and times/, locales $locales"
+[ "$nsets" -gt 0 ] || { echo "tzoracle: no time set found" >&2; exit 2; }
+sh "$ASPEN_ROOT/tests/fixtures/mkfixtures" "$work/fx" >/dev/null || { echo "tzoracle: the fixtures did not build" >&2; exit 2; }
+
+agree=0
+differ=0
+skipped=0
+
+# oracle_row ID SETS: tools/oracle over SETS under the row's TZ (the
+# environment the caller set), its summary added to the totals
+oracle_row() {
+    # shellcheck disable=SC2086
+    "$ASPEN_ROOT/tools/oracle" --bin "$bin" $against --tz "$tzv" --sets "$2" --locales "$locales" \
+        >"$work/row.log" 2>&1
+    rc=$?
+    grep -E '^  (DIFF|    )' "$work/row.log" | sed -n '1,40p' | sed "s/^/  [$1] /"
+    line=$(grep -E '^oracle: [0-9]+ agree / [0-9]+ differ' "$work/row.log" | tail -1)
+    if [ "$rc" = 2 ] || [ -z "$line" ]; then
+        sed 's/^/  | /' "$work/row.log"
+        echo "tzoracle: [$1] the oracle could not run (exit $rc)" >&2
+        exit 2
+    fi
+    a=$(echo "$line" | awk '{ print $2 }')
+    d=$(echo "$line" | awk '{ print $5 }')
+    agree=$((agree + a))
+    differ=$((differ + d))
+    echo "tzoracle: [$1] TZ=$tzv: $a agree / $d differ"
+}
+
+# refuse_row ID: aspen refuses the leap-second zone by name on every time set
+refuse_row() {
+    want=$tzv
+    [ "$tzv" = "(unset)" ] && want=/etc/localtime
+    ok=0
+    bad=0
+    while IFS="$tab" read -r sid _cls sargs _rts; do
+        (
+            cd "$work/fx" || exit 2
+            set -f
+            eval "set -- $sargs"
+            exec "$bin" -n "$@" times
+        ) >"$work/r.out" 2>"$work/r.err" </dev/null
+        rrc=$?
+        nerr=$(wc -l <"$work/r.err" | tr -d ' ')
+        if [ "$rrc" = 2 ] && [ ! -s "$work/r.out" ] && [ "$nerr" = 1 ] && grep -qF -- "$want" "$work/r.err"; then
+            ok=$((ok + 1))
+        else
+            bad=$((bad + 1))
+            echo "  [$1] NOT REFUSED [$sid]: rc $rrc, $(wc -c <"$work/r.out" | tr -d ' ') stdout bytes, stderr: $(head -1 "$work/r.err")"
+        fi
+    done <"$work/time-sets.tsv"
+    agree=$((agree + ok))
+    differ=$((differ + bad))
+    echo "tzoracle: [$1] TZ=$tzv: refused on $ok of $((ok + bad)) time sets"
+    seen=$(cd "$work/fx" && "$oracle" -n --timefmt '%F %T %Z %z' times 2>&1 | grep -F ' leap' | head -1)
+    echo "tzoracle: [$1] the oracle's times/leap (Unix 1783000020): $seen"
+    oracle_row "$1/default" "$work/plain-set.tsv"
+}
+
+while IFS="$tab" read -r id cls tzv needs envs; do
+    case "$id" in '' | '#'*) continue ;; esac
+    if [ "$needs" != - ] && [ ! -e "$needs" ]; then
+        skipped=$((skipped + 1))
+        echo "tzoracle: SKIP [$id]: no $needs on this host"
+        continue
+    fi
+    if [ "$cls" = tree ] && [ -n "$ref" ]; then
+        skipped=$((skipped + 1))
+        echo "tzoracle: SKIP [$id]: class tree, not compared with the reference (tz.tsv says why)"
+        continue
+    fi
+    # the row's own variable, for this row alone
+    saved_tzdir_set=${TZDIR+x}
+    saved_tzdir=${TZDIR:-}
+    if [ "$envs" != - ]; then
+        export "${envs?}"
+    fi
+    case "$tzv" in
+    "(unset)") unset TZ ;;
+    "(empty)") export TZ= ;;
+    *) export TZ="$tzv" ;;
+    esac
+    case "$cls" in
+    v1 | tree) oracle_row "$id" "$work/time-sets.tsv" ;;
+    refuse) refuse_row "$id" ;;
+    *) echo "tzoracle: [$id] unknown class $cls" >&2; exit 2 ;;
+    esac
+    if [ -n "$saved_tzdir_set" ]; then export TZDIR="$saved_tzdir"; else unset TZDIR; fi
+    unset TZ
+done <"$zones"
+
+echo "tzoracle: $agree agree / $differ differ / $skipped skipped"
+[ "$differ" = 0 ]
