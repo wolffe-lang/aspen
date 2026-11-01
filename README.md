@@ -36,6 +36,10 @@ binary; `tools/oracle` runs tree and aspen over generated fixtures
 (`tests/fixtures/mkfixtures`) for every invocation in
 `tests/oracle/sets.tsv`; `tools/fuzz` runs C aspen's fuzzer's random trees
 over its whole flag pool; each prints `N agree / M differ / K not-yet`.
+`tools/tzoracle` runs every set that prints a time under each `TZ` of
+`tests/oracle/tz.tsv` (unset, empty, zone names and files, POSIX rules,
+`TZDIR`, the 2026 DST edges of five zones, leap-second zones), against
+tree or, with `--ref`, against another aspen build.
 `tools/collation` measures what the dictionary locale's order changes.
 
 ## Status
@@ -60,7 +64,28 @@ C aspen itself: `tools/aspdiff`). What it does not do, named:
   so a dictionary locale such as glibc's en_US.UTF-8 orders some names
   differently (29 of C aspen's 286 golden cases, every one by order
   alone: `tools/collation`); macOS's en_US.UTF-8 collates by byte;
-- a name that is not UTF-8 cannot be opened or stat'ed (wolf-lang#687).
+- a name that is not UTF-8 cannot be opened or stat'ed (wolf-lang#687);
+- a leap-second time zone (a `right/` zone: tree applies its correction,
+  27 seconds in 2026) is refused by name, status 2, when a time column is
+  asked (`-D`, `--timefmt`): the times come from wolf-std's `std.time`,
+  whose pinned release cannot apply leap seconds yet. A listing with no
+  time column never reads the zone.
+
+## Line glyphs
+
+aspen draws tree's UTF-8 lines (`├──`, `└──`, `│`) exactly where tree
+does: when the locale the environment names (`LC_ALL`, else `LC_CTYPE`,
+else `LANG`) has the UTF-8 codeset and is installed where the C library
+loads it from (`src/locale`; the choice is `src/lines`' `name` and
+`pick`). Otherwise it draws ASCII (`|--`, `` `-- ``). `C.UTF-8` is no
+exception: glibc ships it as locale data, and with
+`/usr/lib/locale/C.utf8` removed tree draws ASCII under `LANG=C.UTF-8`
+too. `TREE_CHARSET=UTF-8` (or `--charset UTF-8`) draws the UTF-8 lines
+in any locale, and `TREE_CHARSET=ascii` the ASCII ones. PAX's login
+exports no `LANG` and ships no locale data, so aspen draws ASCII there,
+as tree would (wolffe-lang/pax#184); exporting `LANG=C.UTF-8` alone does
+not change that while `/usr/lib/locale/C.utf8` is absent, and
+`TREE_CHARSET=UTF-8` is the override meanwhile.
 
 ## Build
 
