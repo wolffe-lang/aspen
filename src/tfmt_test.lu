@@ -2,13 +2,17 @@
 //! library, measured with Python's ctypes calling its `strftime` on the
 //! same `tm`) and macOS's BSD one (nomad-1's, measured the same way):
 //! the conversions, the pad flags and widths, what a non-conversion
-//! prints, the composites, the 255-byte cap.
+//! prints, the composites, the 255-byte cap. And `tm_of`, the `struct tm`
+//! of std.time's local time: src/clock_test.lu's calendar rows, kept here
+//! (tests/clock-rows.tsv), since the weekday and the day of the year are
+//! counted in tfmt now.
 
-use clock
+use std.time
 use tfmt
+use zone
 
-fn tm(hour: int, yday: int) -> clock.Tm {
-    clock.Tm {
+fn tm(hour: int, yday: int) -> tfmt.Tm {
+    tfmt.Tm {
         year: 2001,
         mon: 2,
         mday: 3,
@@ -24,11 +28,11 @@ fn tm(hour: int, yday: int) -> clock.Tm {
     }
 }
 
-fn g(fmt: str, t: clock.Tm) -> str {
+fn g(fmt: str, t: tfmt.Tm) -> str {
     str_from_utf8(tfmt.format(fmt, t, false)) else "<not utf-8>"
 }
 
-fn b(fmt: str, t: clock.Tm) -> str {
+fn b(fmt: str, t: tfmt.Tm) -> str {
     str_from_utf8(tfmt.format(fmt, t, true)) else "<not utf-8>"
 }
 
@@ -42,7 +46,95 @@ fn zs(n: int) -> str {
     s
 }
 
+/// tfmt's `struct tm` of Unix second `t` in UTC, through std.time.
+fn utc(t: int) -> tfmt.Tm {
+    tfmt.tm_of(zone.local_at("", t), t)
+}
+
+/// The day of the year counted month by month (independent of `tm_of`).
+fn yday(y: int, m: int, d: int) -> int {
+    let lens = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    var n = d - 1
+    var k = 1
+    while k < m {
+        n += lens[k - 1]
+        if k == 2 && y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+            n += 1
+        }
+        k += 1
+    }
+    n
+}
+
+fn calendar() {
+    let e = utc(0)
+    assert(
+        e.year == 1970 && e.mon == 1 && e.mday == 1 && e.hour == 0 && e.wday == 4 && e.yday == 0,
+        "the epoch",
+    )
+    let l = utc(951782400)
+    assert(
+        l.year == 2000 && l.mon == 2 && l.mday == 29 && l.wday == 2 && l.yday == 59,
+        "a leap day",
+    )
+    let p = utc(-1)
+    assert(
+        p.year == 1969 &&
+            p.mon == 12 &&
+            p.mday == 31 &&
+            p.hour == 23 &&
+            p.sec == 59 &&
+            p.wday == 3 &&
+            p.yday == 364,
+        "before the epoch",
+    )
+    let c = utc(1792540800)
+    assert(
+        c.year == 2026 && c.mon == 10 && c.mday == 21 && c.wday == 3 && c.yday == 293,
+        "days from civil",
+    )
+    let f = utc(-11670912000)
+    assert(
+        f.year == 1600 && f.mon == 3 && f.mday == 1 && f.wday == 3 && f.yday == 60,
+        "a date long before",
+    )
+    // a 64-bit day count: lupin reads a bare literal as i32
+    var k: int = -800000
+    var ok = true
+    while k < 800000 {
+        let t = utc(k * 86400)
+        let w = (k % 7 + 11) % 7
+        let back = time.to_unix(time.Local {
+            year: t.year,
+            month: t.mon,
+            day: t.mday,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            nanos: 0,
+            offset_s: 0,
+            is_dst: false,
+            abbrev: "UTC",
+        })
+        if back != k * 86400 ||
+            t.wday != w ||
+            t.yday != yday(t.year, t.mon, t.mday) ||
+            t.epoch != k * 86400 {
+            ok = false
+        }
+        k += 9973
+    }
+    assert(ok, "civil and days invert")
+    // the offset, the flag and the designation are std's, unchanged
+    let d = tfmt.tm_of(zone.local_at("EST5EDT,M3.2.0,M11.1.0", 1772953200), 1772953200)
+    assert(
+        d.isdst && d.gmtoff == -14400 && d.zone == "EDT" && d.hour == 3,
+        "the zone's fields pass through",
+    )
+}
+
 fn main() {
+    calendar()
     let t = tm(14, 33)
     // glibc
     assert(
