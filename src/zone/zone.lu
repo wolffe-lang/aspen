@@ -98,8 +98,89 @@ pub fn at(mut m: Memo, t: int) -> time.Local {
 }
 
 /// "" when aspen prints times in zone `tz` (a `spelling`), else the
-/// diagnostic that refuses it.
+/// diagnostic that refuses it: std refused the zone, and the file it would
+/// have read is TZif with leap records. Any other refusal is UTC, as the
+/// C library's (a name it cannot load, a malformed rule or file).
 pub fn refusal(tz: str) -> str {
-    let _ = tz
-    ""
+    var ok = true
+    let _ = time.local_in(tz, 0) else |_| {
+        ok = false
+        local_at("", 0)
+    }
+    if ok {
+        return ""
+    }
+    let path = file_of(tz)
+    if path.len == 0 || !leap_records(path) {
+        return ""
+    }
+    let what = if tz == ":/etc/localtime" then "/etc/localtime" else "TZ={tz}"
+    "aspen: {what}: not implemented in aspen (a leap-second zone, {path}: wolf-std's time zones cannot apply its leap seconds yet)\n"
+}
+
+/// The file std reads for zone `tz` (its `std/time/local.lu` `tz_named`):
+/// one leading colon dropped; an absolute path as it is; with the colon,
+/// a relative file that exists; else the name under `$TZDIR` or
+/// `/usr/share/zoneinfo`. "" for the empty zone.
+fn file_of(tz: str) -> str {
+    var name = tz
+    let colon = name.starts_with(":")
+    if colon {
+        name = name[1..]
+    }
+    if name.len == 0 {
+        return ""
+    }
+    if name.starts_with("/") {
+        return name
+    }
+    if colon && fs_is_file(name) {
+        return name
+    }
+    let dir = env_get("TZDIR") else "/usr/share/zoneinfo"
+    "{dir}/{name}"
+}
+
+fn be32(b: List[byte], at: int) -> int {
+    var v = 0
+    var k = 0
+    while k < 4 {
+        v = v * 256 + b[at + k] as int
+        k += 1
+    }
+    v
+}
+
+/// Whether `path` is TZif (RFC 8536) with leap-second records in its
+/// version-1 block or, from version 2, its 64-bit block (a `zic -b slim`
+/// file has an empty version-1 block).
+fn leap_records(path: str) -> bool {
+    let b = fs_read_bytes(path) else |_| {
+        return false
+    }
+    if b.len < 44 ||
+        b[0] as int != 84 ||
+        b[1] as int != 90 ||
+        b[2] as int != 105 ||
+        b[3] as int != 102 {
+        return false
+    }
+    if be32(b, 28) != 0 {
+        return true
+    }
+    if b[4] as int < 50 {
+        return false
+    }
+    // the version-1 block: 4-byte times, a type index each, 6-byte types,
+    // the designations, 8-byte leap records, the two indicator arrays
+    let isut = be32(b, 20)
+    let isstd = be32(b, 24)
+    let n = be32(b, 32)
+    let types = be32(b, 36)
+    let chars = be32(b, 40)
+    let at = 44 + n * 5 + types * 6 + chars + isstd + isut
+    if at + 44 > b.len || b[at] as int != 84 || b[at + 1] as int != 90 {
+        return false
+    }
+    be32(b, at + 28) != 0
 }
