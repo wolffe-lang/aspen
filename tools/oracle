@@ -33,7 +33,7 @@
 # names) and TZ is UTC.
 #
 # `--tz TZ` runs both sides under that TZ instead (`(unset)` unsets it,
-# `(empty)` sets it empty); tools/tzoracle drives it over
+# `(empty)` sets it empty, `(non-utf8)` sets it to the byte 0xff); tools/tzoracle drives it over
 # tests/oracle/tz.tsv. `--ref ASPEN` compares against another aspen
 # build instead of tree (no tree is needed): the same bytes before and
 # after a change, on a host with no tree (ap02a's std.time adoption).
@@ -79,6 +79,7 @@ fi
 case "$tz" in
 "(unset)") unset TZ ;;
 "(empty)") export TZ= ;;
+"(non-utf8)") TZ=$(printf '\377'); export TZ ;;
 *) export TZ="$tz" ;;
 esac
 echo "oracle: TZ is $tz"
