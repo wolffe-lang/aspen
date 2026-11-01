@@ -73,7 +73,7 @@ oracle_row() {
     "$ASPEN_ROOT/tools/oracle" --bin "$bin" $against --tz "$tzv" --sets "$2" --locales "$locales" \
         >"$work/row.log" 2>&1
     rc=$?
-    grep -E '^  (DIFF|    )' "$work/row.log" | sed -n '1,40p' | sed "s/^/  [$1] /"
+    grep -E '^  ' "$work/row.log" | sed -n '1,60p' | sed "s/^/  [$1] /"
     line=$(grep -E '^oracle: [0-9]+ agree / [0-9]+ differ' "$work/row.log" | tail -1)
     if [ "$rc" = 2 ] || [ -z "$line" ]; then
         sed 's/^/  | /' "$work/row.log"
