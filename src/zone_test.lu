@@ -127,6 +127,35 @@ fn main() {
         )
     }
 
+    // the memo resolves the zone once as the C library does (tree 2.3.2
+    // under glibc 2.44, measured by ap02a): a DST rule without its dates
+    // takes the US one; a zone nothing can load keeps the name tree prints
+    // for it, the value's leading letters, at UTC; unset or empty is UTC
+    var xr = zone.memo("XST3XDT")
+    let x = zone.at(mut xr, 1783000020)
+    assert(
+        x.offset_s == -7200 && x.is_dst && x.abbrev == "XDT",
+        "a DST rule without its dates is the US one",
+    )
+    var xw = zone.memo("XST3XDT")
+    assert(zone.at(mut xw, 1767225600).abbrev == "XST", "and January is standard time")
+    for (tz, name) in [
+        ("nonsense", "nonsense"),
+        ("Nowhere/City", "Nowhere"),
+        (":times/leap", "times"),
+        ("ABC", "ABC"),
+        ("?", ""),
+    ] {
+        var u = zone.memo(tz)
+        let l = zone.at(mut u, 1783000020)
+        assert(
+            l.offset_s == 0 && l.hour == 13 && l.abbrev == name,
+            "an unloadable zone {tz} is UTC named {name}",
+        )
+    }
+    var e = zone.memo("")
+    assert(zone.at(mut e, 0).abbrev == "UTC", "the empty zone is named UTC")
+
     // the refusal: rules and unknown zones never; a TZif file with leap
     // records always, by name (aspen#13)
     assert(zone.refusal(ny) == "", "a rule is not refused")
