@@ -19,7 +19,66 @@
 //! `q`); `%P` is none, `%+` and `%v` are; and the text runs to all 255
 //! bytes, the last piece cut where the room ends.
 
-use clock
+use std.time
+
+/// A broken-down local time (C's `struct tm`, with `tm_gmtoff` and
+/// `tm_zone`), what `strftime` reads: the year in full, the month 1..12,
+/// the weekday 0 Sunday, the day of the year 0..365, and the instant `%s`
+/// prints.
+pub struct Tm {
+    year: int,
+    mon: int,
+    mday: int,
+    hour: int,
+    min: int,
+    sec: int,
+    wday: int,
+    yday: int,
+    isdst: bool,
+    gmtoff: int,
+    zone: str,
+    epoch: int,
+}
+
+/// `localtime`'s `struct tm` for std's local time `l` of Unix second `t`:
+/// std gives the calendar fields, the offset, the DST flag and the
+/// designation; the weekday and the day of the year are counted here,
+/// from std's own day count (`to_unix` of the day's midnight at UTC).
+pub fn tm_of(l: time.Local, t: int) -> Tm {
+    let day = time.to_unix(midnight(l.year, l.month, l.day)) / 86400
+    let jan1 = time.to_unix(midnight(l.year, 1, 1)) / 86400
+    // 1970-01-01, day 0, was a Thursday
+    let w = (day + 4) % 7
+    Tm {
+        year: l.year,
+        mon: l.month,
+        mday: l.day,
+        hour: l.hour,
+        min: l.minute,
+        sec: l.second,
+        wday: if w < 0 then w + 7 else w,
+        yday: day - jan1,
+        isdst: l.is_dst,
+        gmtoff: l.offset_s,
+        zone: l.abbrev,
+        epoch: t,
+    }
+}
+
+fn midnight(y: int, m: int, d: int) -> time.Local {
+    time.Local {
+        year: y,
+        month: m,
+        day: d,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        nanos: 0,
+        offset_s: 0,
+        is_dst: false,
+        abbrev: "UTC",
+    }
+}
 
 fn days_full() -> List[str] {
     ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
@@ -169,7 +228,7 @@ fn is_leap(y: int) -> bool {
 
 /// ISO 8601's week-based year and week (`%G`, `%V`): the week holding
 /// the year's first Thursday is week 1.
-fn iso_week(tm: clock.Tm) -> (int, int) {
+fn iso_week(tm: Tm) -> (int, int) {
     // Monday = 0
     let wd = (tm.wday + 6) % 7
     var year = tm.year
@@ -187,7 +246,7 @@ fn iso_week(tm: clock.Tm) -> (int, int) {
 }
 
 /// Format `tm` by `fmt` as `strftime` does in the C locale.
-pub fn format(fmt: str, tm: clock.Tm, bsd: bool) -> List[byte] {
+pub fn format(fmt: str, tm: Tm, bsd: bool) -> List[byte] {
     var w = Buf { b: List[byte](), full: false, bsd: bsd }
     if bsd {
         put_bsd(mut w, fmt, tm)
@@ -204,7 +263,7 @@ fn one(c: int) -> List[byte] {
 }
 
 /// The BSD dialect's walk of the format (the module header).
-fn put_bsd(mut w: Buf, fmt: str, tm: clock.Tm) {
+fn put_bsd(mut w: Buf, fmt: str, tm: Tm) {
     let f = fmt.bytes()
     let n = fmt.len
     var i = 0
@@ -272,7 +331,7 @@ fn put_bsd(mut w: Buf, fmt: str, tm: clock.Tm) {
     }
 }
 
-fn put(mut w: Buf, fmt: str, tm: clock.Tm) {
+fn put(mut w: Buf, fmt: str, tm: Tm) {
     let f = fmt.bytes()
     let n = fmt.len
     var i = 0
@@ -349,7 +408,7 @@ fn composite(conv: int) -> str {
 
 /// One conversion's bytes: [0] when `conv` is not one, [1] for a
 /// composite (`composite` holds its parts; the flags do not reach them).
-fn conversion(conv: int, tm: clock.Tm, flag: int, swap: bool, width: int) -> List[byte] {
+fn conversion(conv: int, tm: Tm, flag: int, swap: bool, width: int) -> List[byte] {
     let up = flag == 94
     let h12 = if tm.hour % 12 == 0 then 12 else tm.hour % 12
     match conv {
