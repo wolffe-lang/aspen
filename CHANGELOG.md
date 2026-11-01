@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.0 (unreleased) — ap02a, std.time
+
+`-D` and `--timefmt` take their local time from wolf-std's `std.time`
+(wolf 0.2.36's bundled std), and aspen's own zone reader, `src/clock`, is
+gone.
+
+- The zone: `src/zone`, a thin layer over `std.time.local_in`: `TZ` read
+  once, UTC where the C library falls back to it, and a 64-slot memo by
+  the second (std reads the zone file again on every lookup). `$TZDIR` is
+  honoured now, as glibc honours it.
+- `--timefmt` keeps aspen's own strftime (`src/tfmt`: glibc's and macOS's
+  dialects), fed std's calendar fields; `-D`'s default form is std's
+  `format`, with the year as its own digits.
+- A leap-second zone (`right/`) is refused by name, status 2, when a time
+  column is asked: the std aspen pins cannot apply leap seconds yet, and
+  tree applies them.
+- The oracles: `tools/oracle --tz` and `--ref`; `tools/tzoracle` runs
+  every time set under each `TZ` of `tests/oracle/tz.tsv` over a new
+  `times/` fixture of DST edges; `tools/check-rows` holds where the old
+  zone reader's 21 test rows went (`tests/clock-rows.tsv`).
+
 ## 0.1.0 (unreleased) — ap01, the second light
 
 The rest of C aspen's surface at `aspen.pin` (`944a398`), ported from its
