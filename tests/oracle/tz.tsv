@@ -1,0 +1,45 @@
+# tests/oracle/tz.tsv — the TZ values tools/tzoracle runs the time sets
+# under (every set of sets.tsv that prints a time: -D, --timefmt), over
+# main/ and times/ (tests/fixtures/mkfixtures), one value per line:
+#   id <TAB> class <TAB> TZ <TAB> needs <TAB> env
+# TZ `(unset)` unsets it, `(empty)` sets it empty. `needs` is a file the
+# row needs on the host (`-` for none): a row whose file is missing is a
+# loud, counted SKIP (macOS has no right/ or posix/ zones). `env` is one
+# TZDIR=VALUE for both sides (`-` for none; TZDIR is the only one).
+# class v1: aspen agrees with tree byte for byte, and with the reference
+# build under --ref (the bytes before and after a change).
+# class tree: aspen agrees with tree; under --ref the row is not compared,
+# because aspen changed there on purpose (the comment above it says why).
+# class refuse: a leap-second zone (aspen#13). aspen refuses it by name:
+# status 2, nothing on stdout, one diagnostic naming the zone; tree's
+# answer is printed for the record; a listing with no time column
+# (`default`) still agrees.
+unset	v1	(unset)	-	-
+empty	v1	(empty)	-	-
+utc	v1	UTC	-	-
+utc0	v1	UTC0	-	-
+gmt0	v1	GMT0	-	-
+ny	v1	America/New_York	-	-
+syd	v1	Australia/Sydney	-	-
+lhw	v1	Australia/Lord_Howe	-	-
+kol	v1	Asia/Kolkata	-	-
+stj	v1	America/St_Johns	-	-
+lon	v1	Europe/London	-	-
+colon-name	v1	:America/New_York	-	-
+colon-abs	v1	:/usr/share/zoneinfo/Australia/Sydney	/usr/share/zoneinfo/Australia/Sydney	-
+abs	v1	/usr/share/zoneinfo/Asia/Kolkata	/usr/share/zoneinfo/Asia/Kolkata	-
+posix-ny	v1	posix/America/New_York	/usr/share/zoneinfo/posix/America/New_York	-
+est5edt	v1	EST5EDT	-	-
+rule-ny	v1	EST5EDT,M3.2.0,M11.1.0	-	-
+rule-syd	v1	AEST-10AEDT,M10.1.0,M4.1.0/3	-	-
+rule-julian	v1	AAA3BBB,J60/0,J300/0	-	-
+quoted	v1	<+0530>-5:30	-	-
+norule	v1	XST3XDT	-	-
+junk	v1	nonsense	-	-
+missing	v1	Nowhere/City	-	-
+colon-rel	v1	:times/leap	-	-
+# TZDIR names the database: glibc and std.time read it, src/clock never did
+tzdir	tree	Kolkata	/usr/share/zoneinfo/Asia/Kolkata	TZDIR=/usr/share/zoneinfo/Asia
+right-ny	refuse	right/America/New_York	/usr/share/zoneinfo/right/America/New_York	-
+right-abs	refuse	/usr/share/zoneinfo/right/UTC	/usr/share/zoneinfo/right/UTC	-
+right-tzdir	refuse	America/New_York	/usr/share/zoneinfo/right/America/New_York	TZDIR=/usr/share/zoneinfo/right
