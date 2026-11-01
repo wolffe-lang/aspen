@@ -13,6 +13,8 @@
 #    a refusal there is printed and counted, never passed over.
 # 2. Each test file built on the native tier and run from the root.
 # 3. Each test file on lupin, the reference interpreter.
+# 4. tools/check-rows: src/clock_test.lu's rows, each still at its call
+#    site or named as covered by a std test (tests/clock-rows.tsv).
 # Every row is printed; exit 1 when any is not a pass.
 set -u
 ASPEN_ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -82,4 +84,5 @@ for f in src/*_test.lu; do
         fail=1
     fi
 done
+tools/check-rows || fail=1
 exit $fail
