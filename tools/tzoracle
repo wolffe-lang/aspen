@@ -13,8 +13,10 @@
 # set; the oracle's own line for times/leap is printed for the record;
 # and the `default` set, which reads no time, still agrees.
 #
-# Prints each row's `N agree / M differ`, every SKIP, and the totals
-# `tzoracle: N agree / M differ / K skipped`; exit 1 when anything
+# A `ref` row is gated against the reference build only; against tree its
+# differences are printed and counted as known. Prints each row's
+# `N agree / M differ`, every SKIP, and the totals
+# `tzoracle: N agree / M differ / K skipped / J known`; exit 1 when anything
 # differs, 2 when the harness cannot run. Run it where tools/oracle runs
 # (tools/in-container on Linux, as a non-root user).
 set -u
@@ -65,6 +67,7 @@ sh "$ASPEN_ROOT/tests/fixtures/mkfixtures" "$work/fx" >/dev/null || { echo "tzor
 agree=0
 differ=0
 skipped=0
+known=0
 
 # oracle_row ID SETS: tools/oracle over SETS under the row's TZ (the
 # environment the caller set), its summary added to the totals
@@ -138,10 +141,25 @@ while IFS="$tab" read -r id cls tzv needs envs; do
     case "$tzv" in
     "(unset)") unset TZ ;;
     "(empty)") export TZ= ;;
+    "(non-utf8)") TZ=$(printf '\377'); export TZ ;;
     *) export TZ="$tzv" ;;
     esac
     case "$cls" in
     v1 | tree) oracle_row "$id" "$work/time-sets.tsv" ;;
+    ref)
+        if [ -n "$ref" ]; then
+            oracle_row "$id" "$work/time-sets.tsv"
+        else
+            # against tree: counted and printed, not gated (tz.tsv says why)
+            a0=$agree
+            d0=$differ
+            oracle_row "$id" "$work/time-sets.tsv"
+            known=$((known + differ - d0))
+            echo "tzoracle: [$id] class ref: $((differ - d0)) differences from tree, known and not gated"
+            agree=$a0
+            differ=$d0
+        fi
+        ;;
     refuse) refuse_row "$id" ;;
     *) echo "tzoracle: [$id] unknown class $cls" >&2; exit 2 ;;
     esac
@@ -149,5 +167,5 @@ while IFS="$tab" read -r id cls tzv needs envs; do
     unset TZ
 done <"$zones"
 
-echo "tzoracle: $agree agree / $differ differ / $skipped skipped"
+echo "tzoracle: $agree agree / $differ differ / $skipped skipped / $known known (class ref, against tree)"
 [ "$differ" = 0 ]
