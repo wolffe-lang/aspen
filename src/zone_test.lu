@@ -1,0 +1,145 @@
+//! The zone's rows: src/clock_test.lu's TZ rows kept where aspen now asks
+//! std.time (`zone.local_at`, tests/clock-rows.tsv), the memo, the spelling
+//! of `TZ`, and the refusal of a leap-second zone file built by hand from
+//! RFC 8536's layout.
+
+use zone
+
+fn off(tz: str, t: int) -> int {
+    zone.local_at(tz, t).offset_s
+}
+
+fn push32(mut f: List[byte], v: int) {
+    (mut f).push((v / 16777216 % 256) as byte)
+    (mut f).push((v / 65536 % 256) as byte)
+    (mut f).push((v / 256 % 256) as byte)
+    (mut f).push((v % 256) as byte)
+}
+
+/// A TZif header: magic, version byte `ver`, 15 reserved, then the six
+/// counts (isut, isstd, leap, time, type, char).
+fn header(mut f: List[byte], ver: int, leap: int) {
+    for x in "TZif".bytes() {
+        (mut f).push(x)
+    }
+    (mut f).push(ver as byte)
+    var i = 0
+    while i < 15 {
+        (mut f).push(0 as byte)
+        i += 1
+    }
+    for c in [0, 0, leap, 0, 1, 4] {
+        push32(mut f, c)
+    }
+}
+
+/// One UTC type and its designation, then `leap` leap records of
+/// `size` + 4 bytes.
+fn body(mut f: List[byte], leap: int, size: int) {
+    var i = 0
+    while i < 6 {
+        (mut f).push(0 as byte)
+        i += 1
+    }
+    for x in "UTC".bytes() {
+        (mut f).push(x)
+    }
+    (mut f).push(0 as byte)
+    var k = 0
+    while k < leap * (size + 4) {
+        (mut f).push(0 as byte)
+        k += 1
+    }
+}
+
+/// A version-1 file with `leap` leap records.
+fn v1(leap: int) -> List[byte] {
+    var f = List[byte]()
+    header(mut f, 0, leap)
+    body(mut f, leap, 4)
+    f
+}
+
+/// A version-2 file whose v1 block is slim (no leap records) and whose
+/// 64-bit block has `leap` of them, as `zic -b slim` writes a right/ zone.
+fn v2(leap: int) -> List[byte] {
+    var f = List[byte]()
+    header(mut f, 50, 0)
+    body(mut f, 0, 4)
+    header(mut f, 50, leap)
+    body(mut f, leap, 8)
+    for x in "\nUTC0\n".bytes() {
+        (mut f).push(x)
+    }
+    f
+}
+
+fn write(path: str, b: List[byte]) {
+    fs_write_bytes(path, b) else |_| {
+        assert(false, "the fixture file {path} cannot be written")
+    }
+}
+
+fn main() {
+    // src/clock_test.lu's EST5EDT rows: 2026's DST runs from March 8 07:00
+    // UTC to November 1 06:00 UTC
+    let ny = "EST5EDT,M3.2.0,M11.1.0"
+    assert(off(ny, 1772953199) == -18000, "a second before DST")
+    assert(off(ny, 1772953200) == -14400, "DST starts")
+    assert(off(ny, 1793512799) == -14400, "a second before the end")
+    assert(off(ny, 1793512800) == -18000, "DST ends")
+    // its southern rule, the change back at 03:00
+    let au = "AEST-10AEDT,M10.1.0,M4.1.0/3"
+    assert(off(au, 1767225600) == 39600, "January is summer there")
+    assert(off(au, 1783000000) == 36000, "July is winter there")
+    // a TZ that is no rule and no file is UTC, as the C library's
+    let junk = zone.local_at("nonsense", 0)
+    assert(junk.offset_s == 0 && junk.abbrev == "UTC" && junk.year == 1970, "not a rule")
+    assert(zone.local_at("", 86399).hour == 23, "the empty zone is UTC")
+
+    // the spelling: TZ as it is, unset is /etc/localtime
+    env_set("TZ", "Asia/Kolkata") else |_| {}
+    assert(zone.spelling() == "Asia/Kolkata", "TZ is spelled as it is set")
+    env_unset("TZ") else |_| {}
+    assert(zone.spelling() == ":/etc/localtime", "unset TZ is /etc/localtime")
+
+    // the memo answers what std does, through a slot's collision (t and
+    // t + 64 share one) and a repeat
+    var m = zone.memo(ny)
+    for t in [1772953199, 1772953263, 1772953199, 1793512800, 1793512864, -1, 63] {
+        let a = zone.at(mut m, t)
+        let b = zone.local_at(ny, t)
+        assert(
+            a.year == b.year &&
+                a.month == b.month &&
+                a.day == b.day &&
+                a.hour == b.hour &&
+                a.minute == b.minute &&
+                a.second == b.second &&
+                a.offset_s == b.offset_s &&
+                a.is_dst == b.is_dst &&
+                a.abbrev == b.abbrev,
+            "the memo answers what std does at {t}",
+        )
+    }
+
+    // the refusal: rules and unknown zones never; a TZif file with leap
+    // records always, by name (aspen#13)
+    assert(zone.refusal(ny) == "", "a rule is not refused")
+    assert(zone.refusal("Nowhere/City") == "", "an unknown zone is UTC, not refused")
+    assert(zone.refusal("") == "", "the empty zone is not refused")
+    write("zone-test-plain.tmp", v1(0))
+    assert(zone.local_at(":zone-test-plain.tmp", 0).abbrev == "UTC", "std reads the plain file")
+    assert(zone.refusal(":zone-test-plain.tmp") == "", "a file without leap records is not refused")
+    write("zone-test-leap1.tmp", v1(1))
+    let r1 = zone.refusal(":zone-test-leap1.tmp")
+    assert(r1.starts_with("aspen: TZ=:zone-test-leap1.tmp: "), "a leap-second file is refused by name")
+    assert(r1.ends_with("\n") && (r1.find("leap") else -1) > 0, "the refusal says why")
+    write("zone-test-leap2.tmp", v2(1))
+    assert(zone.refusal(":zone-test-leap2.tmp") != "", "a v2 file's 64-bit leap records are read")
+    write("zone-test-slim.tmp", v2(0))
+    assert(zone.refusal(":zone-test-slim.tmp") == "", "a v2 file without them is not refused")
+    for p in ["zone-test-plain.tmp", "zone-test-leap1.tmp", "zone-test-leap2.tmp", "zone-test-slim.tmp"] {
+        fs_remove(p) else |_| {}
+    }
+}

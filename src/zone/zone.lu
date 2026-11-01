@@ -1,0 +1,105 @@
+//! zone — the time zone `-D` and `--timefmt` print in, through wolf-std's
+//! `std.time` (C aspen asks libc: `localtime_r` + `strftime`,
+//! `src/render/fileinfo.c:52`). std reads the zone the way the C library
+//! does: `TZ` unset is `/etc/localtime`; empty, or naming nothing it can
+//! load, is UTC; `:file`, an absolute path, a name under `$TZDIR` (else
+//! `/usr/share/zoneinfo`) or a POSIX rule otherwise (its `std/time/
+//! local.lu` header).
+//!
+//! `TZ` is read once, at the start (`spelling`). std reads and parses the
+//! zone file again on every lookup (no cache, its header), about 15 us a
+//! call natively against 75 ns for a POSIX rule (ap02a, nomad), so `Memo`
+//! keeps the last lookup of 64 slots by the second: the files of a
+//! directory that share a time (a checkout, an unpacked archive) cost one.
+//!
+//! A leap-second zone (`right/`: a TZif file with leap records) is refused
+//! by name (`refusal`). tree and C aspen apply its correction (27 s at
+//! 2026-07-02); the std aspen pins refuses such a file and its `local`
+//! turns that into UTC, so aspen refuses rather than print a wrong time.
+
+use std.time
+
+/// The zone's spelling for `time.local_in`: `$TZ` as it is, or the colon
+/// path of `/etc/localtime` when it is unset (what std's `local` reads).
+/// A value that is not UTF-8 cannot name a file std can open: UTC.
+pub fn spelling() -> str {
+    env_get("TZ") else |e| match e {
+        missing => ":/etc/localtime",
+        utf8 => "",
+    }
+}
+
+/// Local time at Unix second `t` in zone `tz` (a `spelling`): std's
+/// answer, or UTC when std refuses the zone or cannot read it, as the C
+/// library falls back and as std's own `local` does.
+pub fn local_at(tz: str, t: int) -> time.Local {
+    time.local_in(tz, t) else |_| {
+        // the empty zone is UTC and reads nothing: it cannot fail
+        time.local_in("", t) else |_| {
+            time.Local {
+                year: 1970,
+                month: 1,
+                day: 1,
+                hour: 0,
+                minute: 0,
+                second: 0,
+                nanos: 0,
+                offset_s: 0,
+                is_dst: false,
+                abbrev: "UTC",
+            }
+        }
+    }
+}
+
+/// `local_at` over one zone, the last lookup of each of 64 slots by the
+/// second kept (direct-mapped: exact, and small enough that the stat
+/// pool's per-task copy of the columns stays cheap).
+pub struct Memo {
+    tz: str,
+    keys: List[int],
+    vals: List[time.Local],
+    used: List[bool],
+}
+
+/// A memo over zone `tz`; its slots are made at the first lookup.
+pub fn memo(tz: str) -> Memo {
+    Memo {
+        tz: tz,
+        keys: List[int](),
+        vals: List[time.Local](),
+        used: List[bool](),
+    }
+}
+
+/// `local_at(m.tz, t)`, from the memo when its slot holds `t`.
+pub fn at(mut m: Memo, t: int) -> time.Local {
+    if m.used.len == 0 {
+        var k = 0
+        while k < 64 {
+            (mut m.keys).push(0)
+            (mut m.vals).push(local_at("", 0))
+            (mut m.used).push(false)
+            k += 1
+        }
+    }
+    var s = t % 64
+    if s < 0 {
+        s += 64
+    }
+    if m.used[s] && m.keys[s] == t {
+        return copy m.vals[s]
+    }
+    let l = local_at(m.tz, t)
+    m.keys[s] = t
+    m.vals[s] = copy l
+    m.used[s] = true
+    l
+}
+
+/// "" when aspen prints times in zone `tz` (a `spelling`), else the
+/// diagnostic that refuses it.
+pub fn refusal(tz: str) -> str {
+    let _ = tz
+    ""
+}
