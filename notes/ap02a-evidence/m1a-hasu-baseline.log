@@ -1,0 +1,113 @@
+queued 20:54:47Z on hasu-block-A.lock then hasu-A.lock
+=== 20:54:47Z clone/fetch
+5bc1bd548e21b6c66eb03dc33b8c4ed09490a903
+fetch-toolchain: https://github.com/wolffe-lang/wolf-lang/releases/download/v0.2.36/wolf-0.2.36-x86_64-unknown-linux-gnu.tar.gz
+fetch-toolchain: sha256 d383c74c8cd123b9d9dfaa268271d4f004294f85c2b230237d0ef07027d9500d OK
+fetch-toolchain: https://github.com/wolffe-lang/wolf-interp/releases/download/v0.1.58/lupin-0.1.58-x86_64-unknown-linux-gnu.tar.gz
+fetch-toolchain: sha256 34f52792bb59bc7565e0edc1235cd47d9a6ad13d5e6528993627f2e699b62193 OK
+fetch-toolchain: the archive bundles std 78b9d3cbc41d51db44d18c40b6694403644d1c83; staging the pin instead
+fetch-toolchain: https://github.com/wolffe-lang/wolf-std at 78b9d3cbc41d51db44d18c40b6694403644d1c83
+fetch-toolchain: staged x86_64-unknown-linux-gnu into .wolf-bin/
+END fetch-toolchain exit=0
+fetch-c-aspen: https://github.com/tenseleyFlow/aspen at 944a39821549ef674ca8f0369b31b5bb6c5620b3
+fetch-c-aspen: .oracle/c-aspen at 944a39821549ef674ca8f0369b31b5bb6c5620b3
+END fetch-c-aspen exit=0
+std trunk: dee6206fa99025336ca7a01845ef80cf9f6dc09a
+dee6206 2026-10-31 22:08:40 -0400 docs: sc75 the builder and the pin (the note), with the Mac argv witness
+=== 20:57:38Z image localhost/ap02a-aspen-oracle:c109ec9aa750
+warning: database file for 'core' does not exist (use '-Sy' to download)
+warning: database file for 'extra' does not exist (use '-Sy' to download)
+7a7ebee648c2c052607c4d59c52a34d8aa7922c45366ade82a94cf42e0e4a248
+END image exit=0
+=== 21:05:08Z build before (bb3d5647) in the container
+wolf build: note: ld.lld not found on PATH — linking with the system linker (lld ships with the toolchain; packaging is c13)
+build: target/native/aspen
+wolf build: note: ld.lld not found on PATH — linking with the system linker (lld ships with the toolchain; packaging is c13)
+wolf build: `clang` not found — the release tier requires clang >= 15 on PATH (or WOLF_CLANG); system LLVM is a documented toolchain requirement, never a build script (D33)
+END build-before exit=2
+=== 21:06:17Z C aspen in the container
+aspen v0.1.0
+END c-aspen-build exit=0
+tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+uid=1000(mfwolffe) gid=100(100) groups=100(100)
+ls: cannot access '/etc/localtime': No such file or directory
+-rw-r--r-- 3 root root 3552 Sep 12 18:34 /usr/share/zoneinfo/posixrules
+/usr/share/zoneinfo/posix
+/usr/share/zoneinfo/right
+/usr/lib/locale/C.utf8
+/usr/lib/locale/locale-archive
+en_US.utf8
+END container-facts exit=0
+=== 21:06:20Z std probes: the pin and std trunk
+wolf build: note: ld.lld not found on PATH — linking with the system linker (lld ships with the toolchain; packaging is c13)
+wolf build: `clang` not found — the release tier requires clang >= 15 on PATH (or WOLF_CLANG); system LLVM is a documented toolchain requirement, never a build script (D33)
+END probes-build exit=2
+--- ./stdtime-pin TZ=America/New_York
+sh: line 5: ./stdtime-pin: No such file or directory
+--- ./stdtime-trunk TZ=America/New_York
+sh: line 5: ./stdtime-trunk: No such file or directory
+--- ./stdtime-pin TZ=right/America/New_York
+sh: line 5: ./stdtime-pin: No such file or directory
+--- ./stdtime-trunk TZ=right/America/New_York
+sh: line 5: ./stdtime-trunk: No such file or directory
+sh: line 8: ./stdtime-pin: No such file or directory
+sh: line 9: ./stdtime-trunk: No such file or directory
+END probes-run exit=127
+=== 21:06:22Z right/ rows: tree, C aspen, aspen before
+America/New_York | tree | └── [2026-07-02 09:47:00 EDT -0400]  leap | └── [Jul  2 09:47]  leap
+America/New_York | aspen | └── [2026-07-02 09:47:00 EDT -0400]  leap | └── [Jul  2 09:47]  leap
+sh: line 5: /home/mfwolffe/lanes/ap02a/bin/before-linux-release: No such file or directory
+sh: line 6: /home/mfwolffe/lanes/ap02a/bin/before-linux-release: No such file or directory
+America/New_York | before-linux-release |  | 
+right/America/New_York | tree | └── [2026-07-02 09:46:33 EDT -0400]  leap | └── [Jul  2 09:46]  leap
+right/America/New_York | aspen | └── [2026-07-02 09:46:33 EDT -0400]  leap | └── [Jul  2 09:46]  leap
+sh: line 5: /home/mfwolffe/lanes/ap02a/bin/before-linux-release: No such file or directory
+sh: line 6: /home/mfwolffe/lanes/ap02a/bin/before-linux-release: No such file or directory
+right/America/New_York | before-linux-release |  | 
+/usr/share/zoneinfo/right/UTC | tree | └── [2026-07-02 13:46:33 UTC +0000]  leap | └── [Jul  2 13:46]  leap
+/usr/share/zoneinfo/right/UTC | aspen | └── [2026-07-02 13:46:33 UTC +0000]  leap | └── [Jul  2 13:46]  leap
+sh: line 5: /home/mfwolffe/lanes/ap02a/bin/before-linux-release: No such file or directory
+sh: line 6: /home/mfwolffe/lanes/ap02a/bin/before-linux-release: No such file or directory
+/usr/share/zoneinfo/right/UTC | before-linux-release |  | 
+TZDIR=right TZ=America/New_York | tree | └── [2026-07-02 09:46:33 EDT -0400]  leap
+TZ=0xff | tree | └── [2026-07-02 13:47:00  +0000]  leap
+TZ=XST3XDT | tree | └── [2026-07-02 11:47:00 XDT -0200]  leap
+TZDIR=right TZ=America/New_York | aspen | └── [2026-07-02 09:46:33 EDT -0400]  leap
+TZ=0xff | aspen | └── [2026-07-02 13:47:00  +0000]  leap
+TZ=XST3XDT | aspen | └── [2026-07-02 11:47:00 XDT -0200]  leap
+sh: line 11: /home/mfwolffe/lanes/ap02a/bin/before-linux-release: No such file or directory
+TZDIR=right TZ=America/New_York | before-linux-release | 
+sh: line 12: /home/mfwolffe/lanes/ap02a/bin/before-linux-release: No such file or directory
+TZ=0xff | before-linux-release | 
+sh: line 13: /home/mfwolffe/lanes/ap02a/bin/before-linux-release: No such file or directory
+TZ=XST3XDT | before-linux-release | 
+END right-rows exit=0
+=== 21:06:22Z tzoracle: before against tree
+tzoracle: no aspen at /home/mfwolffe/lanes/ap02a/bin/before-linux-release
+END tzoracle-before-vs-tree exit=2
+=== 21:06:22Z locale rows (a root container, its locale directory removed part way)
+LANG unset                               tree                          7c 2d 2d 20 61 0a
+LANG unset                               before-linux-release         env: ‘/home/mfwolffe/lanes/ap02a/bin/before-linux-release’: No such file or directory
+LANG=C.UTF-8                             tree                          e2 94 9c e2 94 80 e2 94 80 20 61 0a
+LANG=C.UTF-8                             before-linux-release         env: ‘/home/mfwolffe/lanes/ap02a/bin/before-linux-release’: No such file or directory
+LC_ALL=C.UTF-8                           tree                          e2 94 9c e2 94 80 e2 94 80 20 61 0a
+LC_ALL=C.UTF-8                           before-linux-release         env: ‘/home/mfwolffe/lanes/ap02a/bin/before-linux-release’: No such file or directory
+LANG=en_US.UTF-8                         tree                          e2 94 9c e2 94 80 e2 94 80 20 61 0a
+LANG=en_US.UTF-8                         before-linux-release         env: ‘/home/mfwolffe/lanes/ap02a/bin/before-linux-release’: No such file or directory
+LANG=de_DE.UTF-8 (not installed)         tree                          7c 2d 2d 20 61 0a
+LANG=de_DE.UTF-8 (not installed)         before-linux-release         env: ‘/home/mfwolffe/lanes/ap02a/bin/before-linux-release’: No such file or directory
+TREE_CHARSET=UTF-8, LANG unset           tree                          e2 94 9c e2 94 80 e2 94 80 20 61 0a
+TREE_CHARSET=UTF-8, LANG unset           before-linux-release         env: ‘/home/mfwolffe/lanes/ap02a/bin/before-linux-release’: No such file or directory
+LANG=C.UTF-8 TREE_CHARSET=ascii          tree                          7c 2d 2d 20 61 0a
+LANG=C.UTF-8 TREE_CHARSET=ascii          before-linux-release         env: ‘/home/mfwolffe/lanes/ap02a/bin/before-linux-release’: No such file or directory
+/usr/lib/locale/C.utf8
+/usr/lib/locale/locale-archive
+--- /usr/lib/locale/C.utf8 removed
+/usr/lib/locale/locale-archive
+en_US.utf8
+LANG=C.UTF-8, C.utf8 removed             tree                          7c 2d 2d 20 61 0a
+LANG=C.UTF-8, C.utf8 removed             before-linux-release         env: '/home/mfwolffe/lanes/ap02a/bin/before-linux-release': No such file or directory
+TREE_CHARSET=UTF-8, C.utf8 removed       tree                          e2 94 9c e2 94 80 e2 94 80 20 61 0a
+TREE_CHARSET=UTF-8, C.utf8 removed       before-linux-release         env: '/home/mfwolffe/lanes/ap02a/bin/before-linux-release': No such file or directory
+END locale-rows exit=0
+=== 21:06:23Z done

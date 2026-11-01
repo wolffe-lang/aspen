@@ -1,0 +1,24 @@
+//! member: false
+//!
+//! ap02a witness: std.time.format's %Y for a year below 1000. glibc's
+//! strftime prints the year's own digits ("999"; aspen's tfmt measured it);
+//! std at 78b9d3cb pads to four ("0999").
+use std.time
+
+fn main() -> int {
+    let l = time.Local {
+        year: 999,
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        nanos: 0,
+        offset_s: 0,
+        is_dst: false,
+        abbrev: "UTC",
+    }
+    let y = time.format(l, "%Y|%b %e  %Y") else "<format>"
+    print(y)
+    0
+}

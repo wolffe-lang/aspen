@@ -1,0 +1,8 @@
+wip: building 9613990dfcf9a2439d3b2bc3f3b707a60e337316
+maclock: 20:55:19Z lock held, 9624 MiB available
+wolf-trap: assert
+  at src/zone_test.lu:136:5
+zone_test exit=134
+maclock: 20:55:19Z command exit=0; releasing
+
+[exited with code 0]

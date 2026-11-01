@@ -1,0 +1,48 @@
+//! member: false
+//!
+//! ap02a probe: std.time at the pin. Usage:
+//!   stdtime show ZONE T        local_in(ZONE, T) and local(T) under $TZ
+//!   stdtime cost N T           N calls of local(T + k), the wall time
+use std.fmt
+use std.time
+
+fn show(l: time.Local) -> str {
+    let f = time.format(l, "%F %T %Z %z") else "<format>"
+    "{f} dst={l.is_dst} off={l.offset_s}"
+}
+
+fn main() -> int {
+    let a = env_args()
+    if a.len < 3 {
+        print("usage: stdtime show ZONE T | cost N T")
+        return 2
+    }
+    if a[0] == "show" {
+        let t = fmt.parse_int(a[2]) else 0
+        var r = "local_in: "
+        let l = time.local_in(a[1], t) else |e| match e {
+            zone => { print("local_in({a[1]}, {t}): zone"); time.local(t) else { return 3 } },
+            io => { print("local_in({a[1]}, {t}): io"); return 4 },
+        }
+        print("{r}{show(l)}")
+        let g = time.local(t) else |e| match e {
+            zone => { print("local: zone"); return 5 },
+            io => { print("local: io"); return 6 },
+        }
+        print("local($TZ): {show(g)}")
+        return 0
+    }
+    let n = fmt.parse_int(a[1]) else 1000
+    let t = fmt.parse_int(a[2]) else 0
+    let t0 = time.monotonic_ns()
+    var acc = 0
+    var k = 0
+    while k < n {
+        let l = time.local(t + k * 61) else { return 7 }
+        acc += l.minute
+        k += 1
+    }
+    let t1 = time.monotonic_ns()
+    print("cost: {n} calls, {(t1 - t0) / 1000} us, {(t1 - t0) / n} ns/call (acc {acc})")
+    0
+}

@@ -1,0 +1,15 @@
+//! member: false
+//!
+//! ap02a witness: an unannotated integer binding, multiplied past i32,
+//! then passed to an `int` parameter. wolf 0.2.36's native tier and the
+//! checked machine print -69120000000; lupin 0.1.58 traps overflow (i32).
+fn twice(t: int) -> int {
+    t * 2
+}
+
+fn main() -> int {
+    var k = -800000
+    let t = twice(k * 86400)
+    print("{t}")
+    0
+}

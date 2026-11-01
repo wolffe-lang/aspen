@@ -1,0 +1,81 @@
+maclock: 21:04:02Z lock held, 9975 MiB available
+at fd0879c5fce7dfd36c903b2bc50f0979770f3ca6
+build: target/native/aspen
+build: target/release/aspen
+END build-all exit=0
+  acl            rc 2        0 bytes     0 lines
+  selinux        rc 2        0 bytes     0 lines
+oracle: 2904 agree / 0 differ / 32 not-yet
+END oracle-vs-trunk exit=0
+tzoracle: 14 time sets of sets.tsv, over main/ and times/, locales C C.UTF-8
+tzoracle: [unset] TZ=(unset): 56 agree / 0 differ
+tzoracle: [empty] TZ=(empty): 56 agree / 0 differ
+tzoracle: [utc] TZ=UTC: 56 agree / 0 differ
+tzoracle: [utc0] TZ=UTC0: 56 agree / 0 differ
+tzoracle: [gmt0] TZ=GMT0: 56 agree / 0 differ
+tzoracle: [ny] TZ=America/New_York: 56 agree / 0 differ
+tzoracle: [syd] TZ=Australia/Sydney: 56 agree / 0 differ
+tzoracle: [lhw] TZ=Australia/Lord_Howe: 56 agree / 0 differ
+tzoracle: [kol] TZ=Asia/Kolkata: 56 agree / 0 differ
+tzoracle: [stj] TZ=America/St_Johns: 56 agree / 0 differ
+tzoracle: [lon] TZ=Europe/London: 56 agree / 0 differ
+tzoracle: [colon-name] TZ=:America/New_York: 56 agree / 0 differ
+tzoracle: [colon-abs] TZ=:/usr/share/zoneinfo/Australia/Sydney: 56 agree / 0 differ
+tzoracle: [abs] TZ=/usr/share/zoneinfo/Asia/Kolkata: 56 agree / 0 differ
+tzoracle: SKIP [posix-ny]: no /usr/share/zoneinfo/posix/America/New_York on this host
+tzoracle: [est5edt] TZ=EST5EDT: 56 agree / 0 differ
+tzoracle: [rule-ny] TZ=EST5EDT,M3.2.0,M11.1.0: 56 agree / 0 differ
+tzoracle: [rule-syd] TZ=AEST-10AEDT,M10.1.0,M4.1.0/3: 56 agree / 0 differ
+tzoracle: [rule-julian] TZ=AAA3BBB,J60/0,J300/0: 56 agree / 0 differ
+tzoracle: [quoted] TZ=<+0530>-5:30: 56 agree / 0 differ
+  [norule]   DIFF [date/C/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [date/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [date/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [date/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [meta/C/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [meta/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [meta/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [json-meta/C/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [json-meta/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [json-meta/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [json-meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [out-meta/C/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [out-meta/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [out-meta/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [out-meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [combo/C/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [combo/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [combo/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [combo/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [html-meta/C/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [html-meta/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [html-meta/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [html-meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [xml-meta/C/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [xml-meta/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [xml-meta/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [xml-meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [timefmt/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [timefmt/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [timefmt-many/C/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [timefmt-many/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [timefmt-many/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [timefmt-many/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [timefmt-week/C/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [timefmt-week/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [timefmt-week/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [norule]   DIFF [timefmt-week/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [timefmt-flags/C/times]: tree rc 0, aspen rc 0
+  [norule]   DIFF [timefmt-flags/C.UTF-8/times]: tree rc 0, aspen rc 0
+tzoracle: [norule] TZ=XST3XDT: 12 agree / 44 differ
+tzoracle: [junk] TZ=nonsense: 56 agree / 0 differ
+tzoracle: [missing] TZ=Nowhere/City: 56 agree / 0 differ
+tzoracle: [colon-rel] TZ=:times/leap: 56 agree / 0 differ
+tzoracle: SKIP [tzdir]: class tree, not compared with the reference (tz.tsv says why)
+tzoracle: SKIP [right-ny]: no /usr/share/zoneinfo/right/America/New_York on this host
+tzoracle: SKIP [right-abs]: no /usr/share/zoneinfo/right/UTC on this host
+tzoracle: SKIP [right-tzdir]: no /usr/share/zoneinfo/right/America/New_York on this host
+tzoracle: 1244 agree / 44 differ / 5 skipped
+END tzoracle-vs-trunk exit=1
+maclock: 21:06:13Z command exit=0; releasing
