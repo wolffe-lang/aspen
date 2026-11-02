@@ -70,18 +70,18 @@ lupin 0.1.58, wolf-std `78b9d3cb` bundled). Branch `ap02a`.
 | Prediction (`04f9f27`) | Measured |
 |---|---|
 | 1. tree and C aspen print `09:46:33 EDT -0400` and `[Jul  2 09:46]` under `right/America/New_York` at 1783000020 | Both, in the oracle's container on hasu (M1a, 2026-11-01 21:06Z); `right/UTC` `13:46:33`; `TZDIR=…/right TZ=America/New_York` `09:46:33` |
-| 1. trunk aspen prints `09:47:00`, 27 s late | pending the hasu gauntlet (§4.4) (`right-rows`: tree, C aspen, trunk and the head at 1783000020) |
-| 1. the pinned std refuses and `local` is UTC; std trunk answers `09:46:33` | pending the hasu gauntlet (§4.4) (the std witness: `notes/ap02a-evidence/stdtime.lu` at the pin and at std trunk; M1a could not build it, the oracle image has no clang) |
-| 1. aspen after: status 2, one line naming the zone, nothing on stdout; no time column, the listing unchanged | The unit rows: `zone_test` (refused by name; a v2 file's 64-bit leap records; not refused without them), green on nomad. In the real `right/` files: pending the hasu gauntlet (§4.4) (tz.tsv's refuse rows, `right-rows`) |
-| 2. every time set equal before and after, and equal to tree | Mac, against the trunk build: 1176 agree / 0 differ (10 counted skips); hasu: pending the hasu gauntlet (§4.4) |
+| 1. trunk aspen prints `09:47:00`, 27 s late | So: trunk's build prints `09:47:00 EDT -0400` there, 27 s late (hasu, `right-rows`) |
+| 1. the pinned std refuses and `local` is UTC; std trunk answers `09:46:33` | So: at the pin `local_in` answers `zone` and `local` is `13:47:00 UTC +0000`; std trunk at `dee6206` answers `09:46:33 EDT -0400` (`notes/ap02a-evidence/stdtime.lu` built against each, hasu) |
+| 1. aspen after: status 2, one line naming the zone, nothing on stdout; no time column, the listing unchanged | The unit rows: `zone_test` (refused by name; a v2 file's 64-bit leap records; not refused without them), green on nomad. In the real files on hasu: `right/America/New_York`, `/usr/share/zoneinfo/right/UTC` and `TZDIR=…/right TZ=America/New_York` each refused on 14 of 14 time sets, one line naming the zone and its file; with no time column each listing agrees with tree, 16 of 16, and exits 0 (`tzoracle-tree`, `right-rows`) |
+| 2. every time set equal before and after, and equal to tree | Mac, against the trunk build: 1176 agree / 0 differ (10 counted skips); hasu: against tree 1546 agree / 0 differ / 0 skipped / 22 known (the `XST3XDT` row, class `ref`); against trunk 1322 agree / 0 differ / 6 skipped (class `tree`); the whole oracle against trunk 2904 / 0 / 32 |
 | 3. a DST string with no rule: the old clock's US rule, std's UTC | So: `XST3XDT` gave 44 differences before the fix (`fd0879c`, the Mac). tree prints `11:47:00 XDT -0200` (glibc's default rule), so aspen adds `,M3.2.0,M11.1.0` (R-ap02a-5): 0 differences against trunk at `71a4001` |
-| 3. `$TZDIR`: std reads it, the old clock did not | pending the hasu gauntlet (§4.4) (tz.tsv's `tzdir` row, class tree) |
+| 3. `$TZDIR`: std reads it, the old clock did not | So: `TZDIR=/usr/share/zoneinfo/Asia TZ=Kolkata`: the head agrees with tree on 56 of 56, trunk on 2 of 56 |
 | 3. TZ precedence (rule first): no visible difference for real names | So: `GMT0`, `UTC0`, `EST5EDT` agree before and after |
-| 4. std re-reads the zone per call, 5-30 us | 14.6 us a call natively for New York's TZif, 75 ns for a POSIX rule (nomad, `notes/ap02a-evidence/stdtime.lu`); the memo (R-ap02a-2); the `-D` rows: pending the hasu gauntlet (§4.4) |
+| 4. std re-reads the zone per call, 5-30 us | 14.6 us a call natively for New York's TZif, 75 ns for a POSIX rule (nomad, `notes/ap02a-evidence/stdtime.lu`); the memo (R-ap02a-2); hasu 7.0 us (the pin and std trunk alike) against 144 ns. The memo hides it where files share their times and not where they differ: the `-D` rows (§4.5) |
 | 5. 25 rows kept or dropped | 21 rows, not 25 (`grep -c assert src/clock_test.lu`): 13 kept at call sites, 8 dropped for the std test named (`tests/clock-rows.tsv`) |
 | 5. the plant red by the row's name | `MISSING [July is winter there]` (§4.3) |
-| 6. glibc does not build C.UTF-8 in | So: with `/usr/lib/locale/C.utf8` removed, tree draws `|--` under `LANG=C.UTF-8` (M1a); `TREE_CHARSET=UTF-8` draws the UTF-8 set there; `LANG=de_DE.UTF-8` (not installed) is ASCII |
-| Unpredicted | An unloadable zone: tree names it by the value's leading letters (`nonsense`, `Nowhere`, `times`, `ABC`) and a non-UTF-8 `TZ` by nothing; src/clock and std both say `UTC` (R-ap02a-6, -7) |
+| 6. glibc does not build C.UTF-8 in | So: with `/usr/lib/locale/C.utf8` removed, tree draws ASCII lines under `LANG=C.UTF-8` (M1a); `TREE_CHARSET=UTF-8` draws the UTF-8 set there; `LANG=de_DE.UTF-8` (not installed) is ASCII |
+| Unpredicted | An unloadable zone: tree names it by the value's leading letters (`nonsense`, `Nowhere`, `times`, `ABC`) and a non-UTF-8 `TZ` by nothing; src/clock and std both say `UTC` (R-ap02a-6, -7). One or two letters, a quoted `<ABC>` and a lone `:` part from that rule (§4.5, issue 7) |
 
 ### 4.3 Red before green
 
@@ -95,7 +95,11 @@ lupin 0.1.58, wolf-std `78b9d3cb` bundled). Branch `ap02a`.
   src/zone_test.lu:136:5` ("a DST rule without its dates is the US one"),
   exit 134, native, nomad (snapshot `d278fa1`, the same `src/`).
 - The refuse rows of `tests/oracle/tz.tsv` against the trunk build:
-  pending the hasu gauntlet (§4.4) (`MEASURE tzoracle-trunk-vs-tree`)
+  on hasu trunk refused none of the 14 time sets on any of the three
+  rows (`NOT REFUSED`, status 0, the uncorrected time), and the whole
+  matrix read 1410 agree / 136 differ: the refuse rows' 42, the five
+  named rows' 40 (trunk named them UTC) and the `tzdir` row's 54
+  (`MEASURE tzoracle-trunk-vs-tree`).
 - **The plant**, `ap02a-plant-row` at `1a1021d` (#16, draft): the head
   `71a4001` with the row "July is winter there" deleted, one of the rows
   no std test covers. `tools/check-rows` there, on nomad: `check-rows:
@@ -127,20 +131,66 @@ agree / 0 differ / 10 skipped / 0 known`.
 for step, building in an Ubuntu 24.04 + clang 18 image as CI's runner
 does and running the oracles in `ci/oracle.Containerfile`'s image; then
 `tzoracle` against tree and against trunk, the whole oracle against
-trunk, and the `right/` rows): queued at the hand-back, two copies; the
-first to start runs and the other steps aside (a marker per commit).
-`g1` is on block A (queued 21:22Z), `g2` on block B (queued 22:48Z); logs
-`/home/mfwolffe/lanes/ap02a/logs/g{1,2}.log`, exit markers `g{1,2}.exit`;
-the commit is read from `/home/mfwolffe/lanes/ap02a/gauntlet.sha` at
-start. Its END lines are added here when it reports.
+trunk, and the `right/` rows), at `324d6cf` (the code of `71a4001`),
+block A, 23:24-23:33Z, exit 0 (`notes/ap02a-evidence/hasu-gauntlet-324d6cf.log`;
+its copy queued on block B stepped aside, `-g2.log`):
+
+    END images exit=0
+    END fetch-toolchain exit=0
+    END check-fmt exit=0
+    END build-all exit=0
+    END check-test exit=0
+    END fetch-c-aspen exit=0
+    END c-aspen-build exit=0
+    END oracle-native exit=0
+    END oracle-release exit=0
+    END golden exit=0
+    END fuzz exit=0
+    END aspdiff exit=0
+    END collation exit=0
+    END perf exit=0
+    END mkaspen exit=0
+    END oracle-static exit=0
+    END selftest exit=0
+    END build-trunk exit=0
+    END tzoracle-tree exit=0
+    END tzoracle-trunk exit=0
+    END oracle-trunk exit=0
+    END right-rows exit=0
+
+with check-test 6 passed and the census 13 / 8 / 0; the oracle 2904
+agree / 0 differ / 32 not-yet on the native, release and static
+binaries; the golden matrix 829 / 0 / 29 (en_US.UTF-8 collation); fuzz
+400 runs, 0 differences; aspdiff 44 runs, 0; collation 29 of 286, all by
+collation; perf aspen/C 1.13 and 1.15 (wide1k), 1.79 and 1.68
+(tree100k), each within 2x; tzoracle against tree 1546 / 0 / 0 skipped
+/ 22 known, against trunk 1322 / 0 / 6 skipped; the whole oracle against
+trunk 2904 / 0 / 32. After it, not gates: `MEASURE names exit=0`,
+`MEASURE tzoracle-trunk-vs-tree exit=1` (trunk's reds, as designed),
+`MEASURE probes-build exit=0`, `MEASURE probes-run exit=0`, and the cost
+rows.
 
 ### 4.5 Measurements
 
 - **std.time's cost a call** (nomad, `notes/ap02a-evidence/stdtime.lu`, release tier):
   `TZ=America/New_York`, 10,000 calls 146 ms (14,623 ns a call), 100,000
   calls 15,334 ns a call; `TZ=UTC0`, 75 ns a call; unset (the Mac's
-  `/etc/localtime`, New York), 13,680 ns. hasu: pending the hasu gauntlet (§4.4).
-- **The `-D` listing**, 100,000 files: pending the hasu gauntlet (§4.4) (C aspen, trunk and the head over 100 directories of 1,000 files, their times shared and distinct, `-D` and `--timefmt=%T`, best of three)
+  `/etc/localtime`, New York), 13,680 ns. hasu (the Arch container): New York 7,017 ns a call at the pin and 6,888 ns at std trunk; `UTC0` 144 ns.
+- **The `-D` listing**, 100,000 files (100 directories of 1,000), hasu,
+  `TZ=America/New_York`, `taskset` on four cores of block A, three runs:
+
+  | ms | C aspen | trunk (`src/clock`) | head (std.time + memo) |
+  |---|---|---|---|
+  | times shared, `-D` | 59 | 106 | 127 |
+  | times shared, `--timefmt=%T` | 59 | 108 | 106 |
+  | times distinct, `-D` | 53 | 97 | 435 |
+  | times distinct, `--timefmt=%T` | 55 | 101 | 434 |
+
+  With every file's time distinct, a `-D` listing is 4.5x trunk and 8.2x
+  C aspen: 338 ms more over 100,000 entries, 3.4 us an entry, where
+  std's zone file read costs 7 us a call (the stat pool formats the
+  column on several lanes at once). tools/perf gates the listing and `-s`, not
+  `-D`, so no gate saw it. wolf-std#112 (a parsed zone handle) removes it.
 - **The Mac, against the trunk build** (`bb3d5647`'s release binary, no
   tree on the Mac): the whole `tests/oracle/sets.tsv`, TZ=UTC, 2904 agree
   / 0 differ / 32 not-yet; `tools/tzoracle --ref`, 1176 agree / 0 differ /
@@ -164,7 +214,15 @@ start. Its END lines are added here when it reports.
   `11:47:00 [XDT] -0200`; `EST5EDT4` `09:47:00 [EDT] -0400`. `XST3XDT` at
   2026-03-08 06:59:59 and 07:00:00 UTC is `XST -0300` both (glibc's
   posixrules edges, not `M3.2.0`'s 05:00 UTC), and at 2100-07-01
-  `20:00:00 [EDT] -0400`. Two-letter, digit, quoted and absolute-path values: pending the hasu gauntlet (§4.4) (`MEASURE names`); `lead_name` covers the values measured here.
+  `20:00:00 [EDT] -0400`. More values (hasu, `MEASURE names`): `AB`, `A`, `X1`, `Ab_cd`
+  `[]` (fewer than three leading letters is no name); `<ABC>junk` and
+  `<ABC>` `[ABC]` (a quoted name); `abc def`, `ABC+`, `abc,def` `[abc]`
+  / `[ABC]`; `1234`, `-x`, `/no/such/file`, `:/no/such/file` `[]`; `:`
+  `[UTC]`; `nonsense9` is a rule, `[nonsense] -0900`. `lead_name` agrees
+  for three letters or more and for the empty cases; it differs for one
+  or two letters (it names them), a quoted name (it gives none) and a lone
+  `:` (it gives none, tree `UTC`): an issue (§4.8), no tz.tsv row holds
+  them.
 - **The container's tmpfs keeps times from -2^31**: `lmt` (1883) reads as
   1901-12-13 20:45:52 UTC on both sides.
 
@@ -191,7 +249,10 @@ programs, and the scripts that ran them (`gauntlet.sh`,
   direct-mapped memo by the second, exact, and cheap for the stat pool's
   per-task copy of the columns; (B) a map of every second seen (unbounded,
   and the pool copies it); (C) no memo. **A**, implemented, and a std
-  issue for a parsed zone handle.
+  issue for a parsed zone handle (wolf-std#112). Measured after: it
+  keeps a listing whose files share their times near trunk (127 ms
+  against 106), and does nothing for distinct times (435 against 97,
+  §4.5): the remedy is #112, then a `-D` row in tools/perf.
 - **R-ap02a-3** (`--timefmt`): (A) keep aspen's strftime, `src/tfmt`, fed
   std's fields through `tm_of`; (B) std's `format`, which has 28
   conversions, none of glibc's `%U %W %V %G %g %r %h %k %l %P %E %O`, no
@@ -230,6 +291,9 @@ programs, and the scripts that ran them (`gauntlet.sh`,
 
 ### 4.8 Issues to file (none filed by the lane)
 
+Filed by the orchestrator on 2026-11-01: 1 is wolf-std#112, 2 wolf-std#113,
+3 wolf-interp#316, 4 aspen#17, 6 a comment on pax#184. 7 and 8 are new.
+
 1. **wolf-std**: a parsed zone handle (`time.zone(name)` and a lookup over
    it), so a consumer reads a zone file once. Witness: `notes/ap02a-evidence/stdtime.lu`
    `cost`: 14,623 ns a call for New York's TZif against
@@ -246,9 +310,17 @@ programs, and the scripts that ran them (`gauntlet.sh`,
    job (`cross-cutting`, R-ap02a-8).
 5. **wolf-lang** (or the next pin lane): a release bundling wolf-std at or
    past `fad69dfe`; aspen#13's correction is that re-pin (R-ap02a-1).
-   wolf-std#105 itself is closed and fixed on std trunk (pending the hasu gauntlet (§4.4)).
+   wolf-std#105 itself is closed and fixed on std trunk: `stdtime.lu`
+   at std `dee6206` reads `09:46:33 EDT -0400` (§4.2).
 6. **pax#184** (a comment, not an issue): `LANG=C.UTF-8` needs
    `/usr/lib/locale/C.utf8` on PAX (R-ap02a-11).
+7. **aspen**: the name of a zone nothing loads, where `lead_name` and
+   tree part (§4.5, `MEASURE names`): one or two leading letters (tree:
+   none), a quoted `<ABC>` (tree: `ABC`), a lone `:` (tree: `UTC`). Rows
+   for tz.tsv and a fix in `zone.lead_name`.
+8. **aspen**: `-D` over files of distinct times is 4.5x trunk (435 ms
+   against 97 on 100,000 files, §4.5) until wolf-std#112; then a `-D` row
+   in tools/perf.
 
 To close at the merge: aspen#12. aspen#13 stays open (recommended) until
 the re-pin applies the correction; this PR only refuses.
@@ -257,6 +329,8 @@ the re-pin applies the correction; this PR only refuses.
 
 - The PR (#15) has the five sections, the commits, the test checklist and
   `Footprint: module` (no CI file, pin or spec path in the diff).
-- The plant (#16, draft) is red by name, locally; CI run 41355564822.
-- Pending at the hand-back: the hasu gauntlet's END lines (§4.4) and
-  `tier pr` at the head (the orchestrator's watch).
+- The plant (#16, draft) is red by name, locally and in CI (run
+  41355564822: `check-rows: MISSING [July is winter there]`).
+- The gauntlets green: nomad at `71a4001`, hasu at `324d6cf` (§4.4).
+- `tier pr` green at `324d6cf` (run 41360810210); the run at this head
+  is the orchestrator's watch.

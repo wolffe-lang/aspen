@@ -1,0 +1,964 @@
+queued 21:22:23Z on hasu-block-A.lock then hasu-A.lock
+=== 23:24:51Z gauntlet at 324d6cfe929a45202be18e2fc357de254b65d917 (notes: ap02a, std.time adopted and right/ zones refused)
+=== 23:24:51Z step images
+debconf: delaying package configuration, since apt-utils is not installed
+d417e02bc5628c079d3472a8f8bf8c40beefc8b88c49b25e1c10701cc5b0d61a
+27312bb0d2f16cb09a7a355923bb16f26c08716d545d6aedbcb08751ff5dfdd6
+/usr/local/bin/taskset
+tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+END images exit=0
+=== 23:25:22Z tree's names for zones nothing loads, beyond tz.tsv (a measurement, not a gate)
+TZ=[AB]              └── [[] +0000 13:47:00]  leap
+TZ=[A]               └── [[] +0000 13:47:00]  leap
+TZ=[X1]              └── [[] +0000 13:47:00]  leap
+TZ=[1234]            └── [[] +0000 13:47:00]  leap
+TZ=[<ABC>junk]       └── [[ABC] +0000 13:47:00]  leap
+TZ=[<ABC>]           └── [[ABC] +0000 13:47:00]  leap
+TZ=[abc def]         └── [[abc] +0000 13:47:00]  leap
+TZ=[Ab_cd]           └── [[] +0000 13:47:00]  leap
+TZ=[nonsense9]       └── [[nonsense] -0900 04:47:00]  leap
+TZ=[ABC+]            └── [[ABC] +0000 13:47:00]  leap
+TZ=[:]               └── [[UTC] +0000 13:47:00]  leap
+TZ=[:/no/such/file]  └── [[] +0000 13:47:00]  leap
+TZ=[/no/such/file]   └── [[] +0000 13:47:00]  leap
+TZ=[-x]              └── [[] +0000 13:47:00]  leap
+TZ=[:Nowhere/City]   └── [[Nowhere] +0000 13:47:00]  leap
+TZ=[abc,def]         └── [[abc] +0000 13:47:00]  leap
+MEASURE names exit=0 (a measurement, not a gauntlet step)
+=== 23:26:02Z step fetch-toolchain
+fetch-toolchain: https://github.com/wolffe-lang/wolf-lang/releases/download/v0.2.36/wolf-0.2.36-x86_64-unknown-linux-gnu.tar.gz
+fetch-toolchain: sha256 d383c74c8cd123b9d9dfaa268271d4f004294f85c2b230237d0ef07027d9500d OK
+fetch-toolchain: https://github.com/wolffe-lang/wolf-interp/releases/download/v0.1.58/lupin-0.1.58-x86_64-unknown-linux-gnu.tar.gz
+fetch-toolchain: sha256 34f52792bb59bc7565e0edc1235cd47d9a6ad13d5e6528993627f2e699b62193 OK
+fetch-toolchain: the archive bundles std 78b9d3cbc41d51db44d18c40b6694403644d1c83; staging the pin instead
+fetch-toolchain: https://github.com/wolffe-lang/wolf-std at 78b9d3cbc41d51db44d18c40b6694403644d1c83
+fetch-toolchain: staged x86_64-unknown-linux-gnu into .wolf-bin/
+END fetch-toolchain exit=0
+=== 23:26:16Z step check-fmt
+END check-fmt exit=0
+=== 23:26:33Z step build-all
+build: target/native/aspen
+build: target/release/aspen
+END build-all exit=0
+=== 23:26:40Z step check-test
+check-test: src/glob_test.lu [checked] pass (exit(0))
+check-test: src/info_test.lu [checked] pass (exit(0))
+check-test: src/name_test.lu [checked] pass (exit(0))
+check-test: src/opts_test.lu [checked] pass (exit(0))
+check-test: src/tfmt_test.lu [checked] pass (exit(0))
+check-test: src/zone_test.lu [checked] pass (exit(0))
+check-test: wolf test: 6 passed, 0 not passed (exit 0)
+check-test: src/glob_test.lu [native] ok
+check-test: src/glob_test.lu [lupin] ok
+check-test: src/info_test.lu [native] ok
+check-test: src/info_test.lu [lupin] ok
+check-test: src/name_test.lu [native] ok
+check-test: src/name_test.lu [lupin] ok
+check-test: src/opts_test.lu [native] ok
+check-test: src/opts_test.lu [lupin] ok
+check-test: src/tfmt_test.lu [native] ok
+check-test: src/tfmt_test.lu [lupin] ok
+check-test: src/zone_test.lu [native] ok
+check-test: src/zone_test.lu [lupin] ok
+check-rows: kept [the epoch] in src/tfmt_test.lu (std cover: tests/time/local_fields.lu return 1 (to_unix of 1970-01-01 is 0); tm_of's weekday and day of the year are aspen's)
+check-rows: kept [a leap day] in src/tfmt_test.lu (std cover: tests/time/local_fields.lu return 7 (2000-02-29 by to_unix); tm_of's are aspen's)
+check-rows: kept [before the epoch] in src/tfmt_test.lu (std cover: tests/time/local_tzif.lu return 1 (-1 is 1969-12-31 23:59:59))
+check-rows: kept [days from civil] in src/tfmt_test.lu (std cover: tests/time/local_fields.lu returns 3-6 (2024 dates by to_unix))
+check-rows: kept [a date long before] in src/tfmt_test.lu (std cover: none (no std row before 1883))
+check-rows: kept [civil and days invert] in src/tfmt_test.lu (std cover: none (no std sweep; tm_of's day count is aspen's))
+check-rows: dropped [EST5EDT parses]: wolf-std's tests/time/local_posix.lu covers it (return 1: EST5EDT,M3.2.0,M11.1.0's standard and DST offsets)
+check-rows: kept [a second before DST] in src/zone_test.lu (std cover: tests/time/local_posix.lu return 1 (the 2024 edge of the same rule))
+check-rows: kept [DST starts] in src/zone_test.lu (std cover: tests/time/local_posix.lu return 1 (the 2024 edge of the same rule))
+check-rows: kept [a second before the end] in src/zone_test.lu (std cover: tests/time/local_posix.lu return 2 (the 2024 edge of the same rule))
+check-rows: kept [DST ends] in src/zone_test.lu (std cover: tests/time/local_posix.lu return 2 (the 2024 edge of the same rule))
+check-rows: dropped [a southern zone parses]: wolf-std's tests/time/local_posix.lu covers it (return 6: the southern rule <+1030>-10:30<+11>-11,M10.1.0,M4.1.0)
+check-rows: kept [January is summer there] in src/zone_test.lu (std cover: tests/time/local_posix.lu return 6 (a southern rule in January, 2100))
+check-rows: kept [July is winter there] in src/zone_test.lu (std cover: none (no std row for a southern rule in winter))
+check-rows: kept [not a rule] in src/zone_test.lu (std cover: tests/time/local_environment.lu return 6 (an unresolved TZ is UTC); the fallback is aspen's)
+check-rows: dropped [a quoted name, minutes]: wolf-std's tests/time/local_posix.lu covers it (return 3: <+0530>-5:30 is 19800 east, no DST)
+check-rows: dropped [the zone file parses]: wolf-std's tests/time/local_tzif.lu covers it (five real TZif files read (returns 1-5), and local_v1.lu's synthetic v1)
+check-rows: dropped [before the transition]: wolf-std's tests/time/local_tzif.lu covers it (return 6: a second before New York's first transition is LMT (-17762))
+check-rows: dropped [after it]: wolf-std's tests/time/local_tzif.lu covers it (return 7: the first transition starts EST (-18000))
+check-rows: dropped [the footer's rule after the last]: wolf-std's tests/time/local_tzif.lu covers it (return 9: 2100-07-01, past New York's table, is its footer's EDT (-14400))
+check-rows: dropped [not a zone file]: wolf-std's tests/time/local_zone_rows.lu covers it (return 2: "not TZif" is a zone row)
+check-rows: 13 kept / 8 dropped for std / 0 missing, of 21 rows
+END check-test exit=0
+=== 23:26:43Z step fetch-c-aspen
+fetch-c-aspen: https://github.com/tenseleyFlow/aspen at 944a39821549ef674ca8f0369b31b5bb6c5620b3
+fetch-c-aspen: .oracle/c-aspen at 944a39821549ef674ca8f0369b31b5bb6c5620b3
+END fetch-c-aspen exit=0
+=== 23:26:43Z step c-aspen-build
+aspen v0.1.0
+END c-aspen-build exit=0
+=== 23:26:46Z step oracle-native
+oracle: the oracle is tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+oracle: aspen is /home/mfwolffe/lanes/ap02a/wt-324d6cf/target/native/aspen (aspen v0.1.0)
+oracle: TZ is UTC
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  acl            rc 2     1276 bytes    42 lines
+  selinux        rc 2      842 bytes    42 lines
+oracle: 2904 agree / 0 differ / 32 not-yet
+END oracle-native exit=0
+=== 23:27:31Z step oracle-release
+oracle: the oracle is tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+oracle: aspen is /home/mfwolffe/lanes/ap02a/wt-324d6cf/target/release/aspen (aspen v0.1.0)
+oracle: TZ is UTC
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  acl            rc 2     1276 bytes    42 lines
+  selinux        rc 2      842 bytes    42 lines
+oracle: 2904 agree / 0 differ / 32 not-yet
+END oracle-release exit=0
+=== 23:28:17Z step golden
+golden: run.sh (exit 1), locales: C en_US.UTF-8 C.UTF-8
+  self-test(ref-vs-ref) [C]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C]: 286 cases, 0 diffs
+  self-test(ref-vs-ref) [en_US.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [en_US.UTF-8]: 286 cases, 29 diffs
+  self-test(ref-vs-ref) [C.UTF-8]: 286 cases, 0 diffs
+  parity(aspen-vs-ref) [C.UTF-8]: 286 cases, 0 diffs
+  not-yet (en_US.UTF-8 collation, src/locale): -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aF %C
+  not-yet (en_US.UTF-8 collation, src/locale): -aP .h* %C
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress=1 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress=-2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --compress 4 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --charset=ascii --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): --charset=ascii --compress=-3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -J --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -J --compress 3 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -X --compress 2 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -X --compress=-1 %V
+  not-yet (en_US.UTF-8 collation, src/locale): -H --compress 2 --hintro %h --houtro %o %V
+  not-yet (en_US.UTF-8 collation, src/locale): --gitignore -a %G
+  not-yet (en_US.UTF-8 collation, src/locale): --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info -a %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info --charset=ascii %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info -F %I
+  not-yet (en_US.UTF-8 collation, src/locale): --info --du %I
+  not-yet (en_US.UTF-8 collation, src/locale): --infofile %I/.info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -n -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -R -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -J --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -X --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -H . --hintro=%h --houtro=%o --info %I
+  not-yet (en_US.UTF-8 collation, src/locale): -H . --hintro=%h --houtro=%o -a %C
+  not-yet (en_US.UTF-8 collation, src/locale): -a --fromfile %F/paths.txt
+golden: run.sh matrix: 829 agree / 0 differ / 29 not-yet (29 of them v1 cases under en_US.UTF-8)
+golden: walk.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: WALK: discovery matches tree (paths + dirs, default and -a)
+golden: color.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: COLOR: matches tree (-C / env cases)
+golden: pty.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: PTY: matches tree (auto-color on a real terminal)
+golden: outfile.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: OUTFILE: -o writes the file byte-identically to tree (stdout empty)
+golden: rerun.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: RERUN: ok (-R 00Tree.html generation byte-identical at -L1; stdout+fileset+counts at -L2)
+golden: cyclic.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: CYCLIC: ok (cross-dir cycle detection deterministic + == tree, 30 inode layouts)
+golden: adversarial.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: ADVERSARIAL: hostile inputs survive + match tree (gitignore-backslash, 64k fromfile, 600k TREE_COLORS)
+golden: patterns.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: PATTERNS: slashed -P/-I match basename+path+suffix == tree 2.3.2 (streaming/-J/-X/-L/--matchdirs)
+golden: fpath.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: FPATH: -f root trailing-slash canonical == tree (root line + child paths, all renderers)
+golden: usage.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: USAGE: help/usage/bad-flag byte-identical to tree (name aside); --version ok
+golden: fdlimit.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: FDLIMIT: deep chain survives a low soft fd limit (soft raised to hard)
+golden: threads.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: THREADS: parallel stat deterministic (--threads 1 == 16 == tree); strict parse; dead-zone serial
+golden: deviations.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: DEVIATIONS: all documented deviations hold (aspen correct where tree bugs)
+golden: structural.sh (exit 0): 0 STOP report(s), 0 not-yet report(s); last line: STRUCT: -J/-X well-formed (balanced, single report, standalone comma)
+golden: 829 agree / 0 differ / 29 not-yet (0 skip(s), 0 report(s) on tree's undefined behaviour)
+END golden exit=0
+=== 23:28:44Z step fuzz
+fuzz: 200 trees from /home/mfwolffe/lanes/ap02a/wt-324d6cf/.oracle/c-aspen/tests/golden/fuzz.sh's generator, base seed 1
+fuzz: the v1 pool: -a -d -f -i -l -x -s -h -p -u -g -D -F -Q -N -q -C -n -A -S -t -c -v -U -r --du --prune --dirsfirst --filesfirst --noreport --matchdirs --condense --compress=2 --compress=-1 --ignore-case --metafirst -J -X -L1 -L2 -L3
+fuzz: 400 runs, 0 differences (replay: --seed <seed-1> --n 1)
+END fuzz exit=0
+=== 23:28:51Z step aspdiff
+aspdiff: 44 runs, 0 differences against C aspen aspen v0.1.0
+END aspdiff exit=0
+=== 23:28:52Z step collation
+  collation alone: -a %C
+  collation alone: -aF %C
+  collation alone: -aP .h* %C
+  collation alone: --compress 2 %V
+  collation alone: --compress 3 %V
+  collation alone: --compress=1 %V
+  collation alone: --compress=-2 %V
+  collation alone: --compress 4 %V
+  collation alone: --charset=ascii --compress 2 %V
+  collation alone: --charset=ascii --compress=-3 %V
+  collation alone: -J --compress 2 %V
+  collation alone: -J --compress 3 %V
+  collation alone: -X --compress 2 %V
+  collation alone: -X --compress=-1 %V
+  collation alone: -H --compress 2 --hintro %h --houtro %o %V
+  collation alone: --gitignore -a %G
+  collation alone: --info %I
+  collation alone: --info -a %I
+  collation alone: --info --charset=ascii %I
+  collation alone: --info -F %I
+  collation alone: --info --du %I
+  collation alone: --infofile %I/.info %I
+  collation alone: -n -a %C
+  collation alone: -R -a %C
+  collation alone: -J --info %I
+  collation alone: -X --info %I
+  collation alone: -H . --hintro=%h --houtro=%o --info %I
+  collation alone: -H . --hintro=%h --houtro=%o -a %C
+  collation alone: -a --fromfile %F/paths.txt
+collation: 286 cases under en_US.UTF-8: 29 differ from tree, 29 of them by collation alone (tree with LC_COLLATE=C agrees), 0 otherwise
+collation: /usr/share/i18n/locales/iso14651_t1_common: 3386286 bytes, 85612 lines, 30677 collating elements
+collation: /usr/lib/locale/locale-archive: 3064432 bytes
+END collation exit=0
+=== 23:28:59Z step perf
+perf: tree tree v2.3.2, C aspen aspen v0.1.0, aspen aspen v0.1.0; 3 runs each, taskset -c 0-3, LC_ALL=C
+perf: wide1k    default tree      2.9 ms  C aspen      2.1 ms  aspen      2.4 ms  aspen/C  1.13  aspen/tree  0.84  ok
+perf:   runs (ms): tree 2.9 2.8 3.1  C 2.1 2.0 2.2  aspen 2.4 2.9 2.4
+perf: wide1k    -s      tree      2.9 ms  C aspen      2.5 ms  aspen      2.9 ms  aspen/C  1.15  aspen/tree  1.00  ok
+perf:   runs (ms): tree 2.9 2.7 3.0  C 2.5 2.4 2.6  aspen 2.8 2.9 3.0
+perf: tree100k  default tree     99.1 ms  C aspen     25.4 ms  aspen     45.4 ms  aspen/C  1.79  aspen/tree  0.46  ok
+perf:   runs (ms): tree 98.6 99.1 99.3  C 25.1 25.9 25.4  aspen 45.5 45.4 44.5
+perf: tree100k  -s      tree    105.7 ms  C aspen     51.0 ms  aspen     85.6 ms  aspen/C  1.68  aspen/tree  0.81  ok
+perf:   runs (ms): tree 105.7 106.3 105.6  C 51.0 51.0 50.6  aspen 85.6 85.6 86.3
+perf: the listing within 2x and -s within 2x of C aspen on both workloads
+END perf exit=0
+=== 23:29:02Z step mkaspen
+build: target/static/aspen
+build: target/static/aspen
+aspen v0.1.0
+aspen c08d1c61a754fabb8fbba51db7f84839a883ea044a1f8e8fa9f0816c5a1191b4 16087656
+aspen (built twice, the same digest); stripped: 1958552 bytes, sha256 adeee2871b902eec715330ba71ddd8bfb898d47bcc62ff6af19fbefff115f6f5
+linked against: /usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/libc.a
+END mkaspen exit=0
+=== 23:29:14Z step oracle-static
+oracle: the oracle is tree v2.3.2 © 1996 - 2026 by Steve Baker, Thomas Moore, Francesc Rocher, Florian Sesser, Kyosuke Tokoro
+oracle: aspen is /home/mfwolffe/lanes/ap02a/wt-324d6cf/target/mkaspen/aspen (aspen v0.1.0)
+oracle: TZ is UTC
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  acl            rc 2     1276 bytes    42 lines
+  selinux        rc 2      842 bytes    42 lines
+oracle: 2904 agree / 0 differ / 32 not-yet
+END oracle-static exit=0
+=== 23:30:00Z step selftest
+selftest: oracle-glyph went red on its planted difference (status 1): ok
+selftest: oracle-count went red on its planted difference (status 1): ok
+selftest: golden-glyph went red on its planted difference (status 1): ok
+selftest: fuzz-glyph went red on its planted difference (status 1): ok
+selftest: perf-slow went red on its planted difference (status 1): ok
+END selftest exit=0
+=== 23:30:45Z step build-trunk
+build: target/release/aspen
+END build-trunk exit=0
+=== 23:30:54Z step tzoracle-tree
+tzoracle: 14 time sets of sets.tsv, over main/ and times/, locales C C.UTF-8
+tzoracle: [unset] TZ=(unset): 56 agree / 0 differ
+tzoracle: [empty] TZ=(empty): 56 agree / 0 differ
+tzoracle: [utc] TZ=UTC: 56 agree / 0 differ
+tzoracle: [utc0] TZ=UTC0: 56 agree / 0 differ
+tzoracle: [gmt0] TZ=GMT0: 56 agree / 0 differ
+tzoracle: [ny] TZ=America/New_York: 56 agree / 0 differ
+tzoracle: [syd] TZ=Australia/Sydney: 56 agree / 0 differ
+tzoracle: [lhw] TZ=Australia/Lord_Howe: 56 agree / 0 differ
+tzoracle: [kol] TZ=Asia/Kolkata: 56 agree / 0 differ
+tzoracle: [stj] TZ=America/St_Johns: 56 agree / 0 differ
+tzoracle: [lon] TZ=Europe/London: 56 agree / 0 differ
+tzoracle: [colon-name] TZ=:America/New_York: 56 agree / 0 differ
+tzoracle: [colon-abs] TZ=:/usr/share/zoneinfo/Australia/Sydney: 56 agree / 0 differ
+tzoracle: [abs] TZ=/usr/share/zoneinfo/Asia/Kolkata: 56 agree / 0 differ
+tzoracle: [posix-ny] TZ=posix/America/New_York: 56 agree / 0 differ
+tzoracle: [est5edt] TZ=EST5EDT: 56 agree / 0 differ
+tzoracle: [rule-ny] TZ=EST5EDT,M3.2.0,M11.1.0: 56 agree / 0 differ
+tzoracle: [rule-syd] TZ=AEST-10AEDT,M10.1.0,M4.1.0/3: 56 agree / 0 differ
+tzoracle: [rule-julian] TZ=AAA3BBB,J60/0,J300/0: 56 agree / 0 differ
+tzoracle: [quoted] TZ=<+0530>-5:30: 56 agree / 0 differ
+  [norule]   DIFF [date/C/times]: tree rc 0, aspen rc 0
+  [norule]     out 11c11
+  [norule]     out < |-- [Nov  1 03:59]  ny-end-1
+  [norule]     out ---
+  [norule]     out > |-- [Nov  1 02:59]  ny-end-1
+  [norule]     out 21c21
+  [norule]     out < |-- [Jan 18  2038]  y2038
+  [norule]     out ---
+  [norule]     out > |-- [Jan 19  2038]  y2038
+  [norule]   DIFF [date/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]     out 11c11
+  [norule]     out < ├── [Nov  1 03:59]  ny-end-1
+  [norule]     out ---
+  [norule]     out > ├── [Nov  1 02:59]  ny-end-1
+  [norule]     out 21c21
+  [norule]     out < ├── [Jan 18  2038]  y2038
+  [norule]     out ---
+  [norule]     out > ├── [Jan 19  2038]  y2038
+  [norule]   DIFF [meta/C/times]: tree rc 0, aspen rc 0
+  [norule]     out 11c11
+  [norule]     out < |-- [-rw-r--r--           1 Nov  1 03:59]  ny-end-1
+  [norule]     out ---
+  [norule]     out > |-- [-rw-r--r--           1 Nov  1 02:59]  ny-end-1
+  [norule]     out 21c21
+  [norule]     out < |-- [-rw-r--r--           1 Jan 18  2038]  y2038
+  [norule]     out ---
+  [norule]     out > |-- [-rw-r--r--           1 Jan 19  2038]  y2038
+  [norule]   DIFF [meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]     out 11c11
+  [norule]     out < ├── [-rw-r--r--           1 Nov  1 03:59]  ny-end-1
+  [norule]     out ---
+  [norule]     out > ├── [-rw-r--r--           1 Nov  1 02:59]  ny-end-1
+  [norule]     out 21c21
+  [norule]     out < ├── [-rw-r--r--           1 Jan 18  2038]  y2038
+  [norule]     out ---
+  [norule]     out > ├── [-rw-r--r--           1 Jan 19  2038]  y2038
+  [norule]   DIFF [json-meta/C/times]: tree rc 0, aspen rc 0
+  [norule]     out 12c12
+  [norule]     out <         {"type":"file","name":"ny-end-1","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Nov  1 03:59"},
+  [norule]     out ---
+  [norule]     out >         {"type":"file","name":"ny-end-1","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Nov  1 02:59"},
+  [norule]     out 22c22
+  [norule]     out <         {"type":"file","name":"y2038","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Jan 18  2038"},
+  [norule]     out ---
+  [norule]     out >         {"type":"file","name":"y2038","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Jan 19  2038"},
+  [norule]   DIFF [json-meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]     out 12c12
+  [norule]     out <         {"type":"file","name":"ny-end-1","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Nov  1 03:59"},
+  [norule]     out ---
+  [norule]     out >         {"type":"file","name":"ny-end-1","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Nov  1 02:59"},
+  [norule]     out 22c22
+  [norule]     out <         {"type":"file","name":"y2038","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Jan 18  2038"},
+  [norule]     out ---
+  [norule]     out >         {"type":"file","name":"y2038","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Jan 19  2038"},
+  [norule]   DIFF [out-meta/C/times]: tree rc 0, aspen rc 0
+  [norule]     file 11c11
+  [norule]     file < |-- [          1 Nov  1 03:59]  ny-end-1
+  [norule]     file ---
+  [norule]     file > |-- [          1 Nov  1 02:59]  ny-end-1
+  [norule]     file 21c21
+tzoracle: [norule] TZ=XST3XDT: 34 agree / 22 differ
+tzoracle: [norule] class ref: 22 differences from tree, known and not gated
+tzoracle: [norule-ny] TZ=EST5EDT4: 56 agree / 0 differ
+tzoracle: [norule-ny] class ref: 0 differences from tree, known and not gated
+tzoracle: [junk] TZ=nonsense: 56 agree / 0 differ
+tzoracle: [missing] TZ=Nowhere/City: 56 agree / 0 differ
+tzoracle: [colon-rel] TZ=:times/leap: 56 agree / 0 differ
+tzoracle: [letters] TZ=ABC: 56 agree / 0 differ
+tzoracle: [non-utf8] TZ=(non-utf8): 56 agree / 0 differ
+tzoracle: [tzdir] TZ=Kolkata: 56 agree / 0 differ
+tzoracle: [right-ny] TZ=right/America/New_York: refused on 14 of 14 time sets
+tzoracle: [right-ny] the oracle's times/leap (Unix 1783000020): ├── [2026-07-02 09:46:33 EDT -0400]  leap
+sed: -e expression #1, char 17: unknown option to 's'
+tzoracle: [right-ny/default] TZ=right/America/New_York: 16 agree / 0 differ
+tzoracle: [right-abs] TZ=/usr/share/zoneinfo/right/UTC: refused on 14 of 14 time sets
+tzoracle: [right-abs] the oracle's times/leap (Unix 1783000020): ├── [2026-07-02 13:46:33 UTC +0000]  leap
+sed: -e expression #1, char 18: unknown option to 's'
+tzoracle: [right-abs/default] TZ=/usr/share/zoneinfo/right/UTC: 16 agree / 0 differ
+tzoracle: [right-tzdir] TZ=America/New_York: refused on 14 of 14 time sets
+tzoracle: [right-tzdir] the oracle's times/leap (Unix 1783000020): ├── [2026-07-02 09:46:33 EDT -0400]  leap
+sed: -e expression #1, char 20: unknown option to 's'
+tzoracle: [right-tzdir/default] TZ=America/New_York: 16 agree / 0 differ
+tzoracle: 1546 agree / 0 differ / 0 skipped / 22 known (class ref, against tree)
+END tzoracle-tree exit=0
+=== 23:31:31Z step tzoracle-trunk
+tzoracle: 14 time sets of sets.tsv, over main/ and times/, locales C C.UTF-8
+tzoracle: [unset] TZ=(unset): 56 agree / 0 differ
+tzoracle: [empty] TZ=(empty): 56 agree / 0 differ
+tzoracle: [utc] TZ=UTC: 56 agree / 0 differ
+tzoracle: [utc0] TZ=UTC0: 56 agree / 0 differ
+tzoracle: [gmt0] TZ=GMT0: 56 agree / 0 differ
+tzoracle: [ny] TZ=America/New_York: 56 agree / 0 differ
+tzoracle: [syd] TZ=Australia/Sydney: 56 agree / 0 differ
+tzoracle: [lhw] TZ=Australia/Lord_Howe: 56 agree / 0 differ
+tzoracle: [kol] TZ=Asia/Kolkata: 56 agree / 0 differ
+tzoracle: [stj] TZ=America/St_Johns: 56 agree / 0 differ
+tzoracle: [lon] TZ=Europe/London: 56 agree / 0 differ
+tzoracle: [colon-name] TZ=:America/New_York: 56 agree / 0 differ
+tzoracle: [colon-abs] TZ=:/usr/share/zoneinfo/Australia/Sydney: 56 agree / 0 differ
+tzoracle: [abs] TZ=/usr/share/zoneinfo/Asia/Kolkata: 56 agree / 0 differ
+tzoracle: [posix-ny] TZ=posix/America/New_York: 56 agree / 0 differ
+tzoracle: [est5edt] TZ=EST5EDT: 56 agree / 0 differ
+tzoracle: [rule-ny] TZ=EST5EDT,M3.2.0,M11.1.0: 56 agree / 0 differ
+tzoracle: [rule-syd] TZ=AEST-10AEDT,M10.1.0,M4.1.0/3: 56 agree / 0 differ
+tzoracle: [rule-julian] TZ=AAA3BBB,J60/0,J300/0: 56 agree / 0 differ
+tzoracle: [quoted] TZ=<+0530>-5:30: 56 agree / 0 differ
+tzoracle: [norule] TZ=XST3XDT: 56 agree / 0 differ
+tzoracle: [norule-ny] TZ=EST5EDT4: 56 agree / 0 differ
+tzoracle: SKIP [junk]: class tree, not compared with the reference (tz.tsv says why)
+tzoracle: SKIP [missing]: class tree, not compared with the reference (tz.tsv says why)
+tzoracle: SKIP [colon-rel]: class tree, not compared with the reference (tz.tsv says why)
+tzoracle: SKIP [letters]: class tree, not compared with the reference (tz.tsv says why)
+tzoracle: SKIP [non-utf8]: class tree, not compared with the reference (tz.tsv says why)
+tzoracle: SKIP [tzdir]: class tree, not compared with the reference (tz.tsv says why)
+tzoracle: [right-ny] TZ=right/America/New_York: refused on 14 of 14 time sets
+tzoracle: [right-ny] the oracle's times/leap (Unix 1783000020): ├── [2026-07-02 09:47:00 EDT -0400]  leap
+sed: -e expression #1, char 17: unknown option to 's'
+tzoracle: [right-ny/default] TZ=right/America/New_York: 16 agree / 0 differ
+tzoracle: [right-abs] TZ=/usr/share/zoneinfo/right/UTC: refused on 14 of 14 time sets
+tzoracle: [right-abs] the oracle's times/leap (Unix 1783000020): ├── [2026-07-02 13:47:00 UTC +0000]  leap
+sed: -e expression #1, char 18: unknown option to 's'
+tzoracle: [right-abs/default] TZ=/usr/share/zoneinfo/right/UTC: 16 agree / 0 differ
+tzoracle: [right-tzdir] TZ=America/New_York: refused on 14 of 14 time sets
+tzoracle: [right-tzdir] the oracle's times/leap (Unix 1783000020): ├── [2026-07-02 09:47:00 EDT -0400]  leap
+sed: -e expression #1, char 20: unknown option to 's'
+tzoracle: [right-tzdir/default] TZ=America/New_York: 16 agree / 0 differ
+tzoracle: 1322 agree / 0 differ / 6 skipped / 0 known (class ref, against tree)
+END tzoracle-trunk exit=0
+=== 23:32:00Z step oracle-trunk
+oracle: the reference is /home/mfwolffe/lanes/ap02a/bin/before-linux-release (aspen v0.1.0)
+oracle: aspen is /home/mfwolffe/lanes/ap02a/wt-324d6cf/target/release/aspen (aspen v0.1.0)
+oracle: TZ is UTC
+oracle: tree's answers to the v2 sets on main/, C locale (status, stdout bytes, lines):
+  acl            rc 2        0 bytes     0 lines
+  selinux        rc 2        0 bytes     0 lines
+oracle: 2904 agree / 0 differ / 32 not-yet
+END oracle-trunk exit=0
+=== 23:32:45Z step right-rows
+America/New_York | tree | └── [2026-07-02 09:47:00 EDT -0400]  leap
+America/New_York | /home/mfwolffe/lanes/ap02a/wt-324d6cf/.oracle/c-aspen/aspen | └── [2026-07-02 09:47:00 EDT -0400]  leap
+America/New_York | /home/mfwolffe/lanes/ap02a/bin/before-linux-release | └── [2026-07-02 09:47:00 EDT -0400]  leap
+America/New_York | /home/mfwolffe/lanes/ap02a/wt-324d6cf/target/release/aspen | └── [2026-07-02 09:47:00 EDT -0400]  leap
+right/America/New_York | tree | └── [2026-07-02 09:46:33 EDT -0400]  leap
+right/America/New_York | /home/mfwolffe/lanes/ap02a/wt-324d6cf/.oracle/c-aspen/aspen | └── [2026-07-02 09:46:33 EDT -0400]  leap
+right/America/New_York | /home/mfwolffe/lanes/ap02a/bin/before-linux-release | └── [2026-07-02 09:47:00 EDT -0400]  leap
+right/America/New_York | /home/mfwolffe/lanes/ap02a/wt-324d6cf/target/release/aspen | aspen: TZ=right/America/New_York: not implemented in aspen (a leap-second zone, /usr/share/zoneinfo/right/America/New_York: wolf-std's time zones cannot apply its leap seconds yet)
+aspen: TZ=right/America/New_York: not implemented in aspen (a leap-second zone, /usr/share/zoneinfo/right/America/New_York: wolf-std's time zones cannot apply its leap seconds yet)
+after, -D under right/: exit 2
+/tmp/r
+└── leap
+
+1 directory, 1 file
+after, no time column under right/: exit 0
+END right-rows exit=0
+=== 23:32:45Z gauntlet green
+=== 23:32:45Z the trunk build against tree under tz.tsv (the baseline; its refuse rows are red by design)
+tzoracle: 14 time sets of sets.tsv, over main/ and times/, locales C C.UTF-8
+tzoracle: [unset] TZ=(unset): 56 agree / 0 differ
+tzoracle: [empty] TZ=(empty): 56 agree / 0 differ
+tzoracle: [utc] TZ=UTC: 56 agree / 0 differ
+tzoracle: [utc0] TZ=UTC0: 56 agree / 0 differ
+tzoracle: [gmt0] TZ=GMT0: 56 agree / 0 differ
+tzoracle: [ny] TZ=America/New_York: 56 agree / 0 differ
+tzoracle: [syd] TZ=Australia/Sydney: 56 agree / 0 differ
+tzoracle: [lhw] TZ=Australia/Lord_Howe: 56 agree / 0 differ
+tzoracle: [kol] TZ=Asia/Kolkata: 56 agree / 0 differ
+tzoracle: [stj] TZ=America/St_Johns: 56 agree / 0 differ
+tzoracle: [lon] TZ=Europe/London: 56 agree / 0 differ
+tzoracle: [colon-name] TZ=:America/New_York: 56 agree / 0 differ
+tzoracle: [colon-abs] TZ=:/usr/share/zoneinfo/Australia/Sydney: 56 agree / 0 differ
+tzoracle: [abs] TZ=/usr/share/zoneinfo/Asia/Kolkata: 56 agree / 0 differ
+tzoracle: [posix-ny] TZ=posix/America/New_York: 56 agree / 0 differ
+tzoracle: [est5edt] TZ=EST5EDT: 56 agree / 0 differ
+tzoracle: [rule-ny] TZ=EST5EDT,M3.2.0,M11.1.0: 56 agree / 0 differ
+tzoracle: [rule-syd] TZ=AEST-10AEDT,M10.1.0,M4.1.0/3: 56 agree / 0 differ
+tzoracle: [rule-julian] TZ=AAA3BBB,J60/0,J300/0: 56 agree / 0 differ
+tzoracle: [quoted] TZ=<+0530>-5:30: 56 agree / 0 differ
+  [norule]   DIFF [date/C/times]: tree rc 0, aspen rc 0
+  [norule]     out 11c11
+  [norule]     out < |-- [Nov  1 03:59]  ny-end-1
+  [norule]     out ---
+  [norule]     out > |-- [Nov  1 02:59]  ny-end-1
+  [norule]     out 21c21
+  [norule]     out < |-- [Jan 18  2038]  y2038
+  [norule]     out ---
+  [norule]     out > |-- [Jan 19  2038]  y2038
+  [norule]   DIFF [date/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]     out 11c11
+  [norule]     out < ├── [Nov  1 03:59]  ny-end-1
+  [norule]     out ---
+  [norule]     out > ├── [Nov  1 02:59]  ny-end-1
+  [norule]     out 21c21
+  [norule]     out < ├── [Jan 18  2038]  y2038
+  [norule]     out ---
+  [norule]     out > ├── [Jan 19  2038]  y2038
+  [norule]   DIFF [meta/C/times]: tree rc 0, aspen rc 0
+  [norule]     out 11c11
+  [norule]     out < |-- [-rw-r--r--           1 Nov  1 03:59]  ny-end-1
+  [norule]     out ---
+  [norule]     out > |-- [-rw-r--r--           1 Nov  1 02:59]  ny-end-1
+  [norule]     out 21c21
+  [norule]     out < |-- [-rw-r--r--           1 Jan 18  2038]  y2038
+  [norule]     out ---
+  [norule]     out > |-- [-rw-r--r--           1 Jan 19  2038]  y2038
+  [norule]   DIFF [meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]     out 11c11
+  [norule]     out < ├── [-rw-r--r--           1 Nov  1 03:59]  ny-end-1
+  [norule]     out ---
+  [norule]     out > ├── [-rw-r--r--           1 Nov  1 02:59]  ny-end-1
+  [norule]     out 21c21
+  [norule]     out < ├── [-rw-r--r--           1 Jan 18  2038]  y2038
+  [norule]     out ---
+  [norule]     out > ├── [-rw-r--r--           1 Jan 19  2038]  y2038
+  [norule]   DIFF [json-meta/C/times]: tree rc 0, aspen rc 0
+  [norule]     out 12c12
+  [norule]     out <         {"type":"file","name":"ny-end-1","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Nov  1 03:59"},
+  [norule]     out ---
+  [norule]     out >         {"type":"file","name":"ny-end-1","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Nov  1 02:59"},
+  [norule]     out 22c22
+  [norule]     out <         {"type":"file","name":"y2038","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Jan 18  2038"},
+  [norule]     out ---
+  [norule]     out >         {"type":"file","name":"y2038","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Jan 19  2038"},
+  [norule]   DIFF [json-meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [norule]     out 12c12
+  [norule]     out <         {"type":"file","name":"ny-end-1","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Nov  1 03:59"},
+  [norule]     out ---
+  [norule]     out >         {"type":"file","name":"ny-end-1","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Nov  1 02:59"},
+  [norule]     out 22c22
+  [norule]     out <         {"type":"file","name":"y2038","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Jan 18  2038"},
+  [norule]     out ---
+  [norule]     out >         {"type":"file","name":"y2038","mode":"0644","prot":"-rw-r--r--","size":1,"time":"Jan 19  2038"},
+  [norule]   DIFF [out-meta/C/times]: tree rc 0, aspen rc 0
+  [norule]     file 11c11
+  [norule]     file < |-- [          1 Nov  1 03:59]  ny-end-1
+  [norule]     file ---
+  [norule]     file > |-- [          1 Nov  1 02:59]  ny-end-1
+  [norule]     file 21c21
+tzoracle: [norule] TZ=XST3XDT: 34 agree / 22 differ
+tzoracle: [norule] class ref: 22 differences from tree, known and not gated
+tzoracle: [norule-ny] TZ=EST5EDT4: 56 agree / 0 differ
+tzoracle: [norule-ny] class ref: 0 differences from tree, known and not gated
+  [junk]   DIFF [timefmt-many/C/main]: tree rc 2, aspen rc 2
+  [junk]     out 1,40c1,40
+  [junk]     out < [2001-12-31 12:00:00 nonsense +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [junk]     out < |-- [2001-02-03 04:07:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [junk]     out < |   |-- [2001-02-03 04:08:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [junk]     out < |   |-- [2001-02-03 04:07:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [junk]     out < |   `-- [2001-02-03 04:06:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [junk]     out < |       |-- [2001-02-03 04:06:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [junk]     out < |       `-- [2001-02-03 04:05:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [junk]     out < |           `-- [2001-02-03 04:05:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [junk]     out < |-- [2001-02-03 04:16:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\\slash
+  [junk]     out < |-- [2001-05-06 07:09:00 nonsense +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [junk]     out < |-- [2001-02-03 04:15:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [junk]   DIFF [timefmt-many/C/times]: tree rc 0, aspen rc 0
+  [junk]     out 1,22c1,22
+  [junk]     out < [2026-07-02 13:47:00 nonsense +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [junk]     out < |-- [2026-07-02 13:47:00 nonsense +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [junk]     out < |-- [2026-04-04 15:00:00 nonsense +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [junk]     out < |-- [2026-04-04 14:59:59 nonsense +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [junk]     out < |-- [2026-10-03 15:30:00 nonsense +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [junk]     out < |-- [2026-10-03 15:29:59 nonsense +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [junk]     out < |-- [1883-11-18 16:59:59 nonsense +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [junk]     out < |-- [2026-03-29 01:00:00 nonsense +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [junk]     out < |-- [2026-03-29 00:59:59 nonsense +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [junk]     out < |-- [2026-11-01 06:00:00 nonsense +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [junk]     out < |-- [2026-11-01 05:59:59 nonsense +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [junk]   DIFF [timefmt-many/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [junk]     out 1,40c1,40
+  [junk]     out < [2001-12-31 12:00:00 nonsense +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [junk]     out < ├── [2001-02-03 04:07:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [junk]     out < │   ├── [2001-02-03 04:08:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [junk]     out < │   ├── [2001-02-03 04:07:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [junk]     out < │   └── [2001-02-03 04:06:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [junk]     out < │       ├── [2001-02-03 04:06:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [junk]     out < │       └── [2001-02-03 04:05:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [junk]     out < │           └── [2001-02-03 04:05:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [junk]     out < ├── [2001-02-03 04:16:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\slash
+  [junk]     out < ├── [2001-05-06 07:09:00 nonsense +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [junk]     out < ├── [2001-02-03 04:15:00 nonsense +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [junk]   DIFF [timefmt-many/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [junk]     out 1,22c1,22
+  [junk]     out < [2026-07-02 13:47:00 nonsense +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [junk]     out < ├── [2026-07-02 13:47:00 nonsense +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [junk]     out < ├── [2026-04-04 15:00:00 nonsense +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [junk]     out < ├── [2026-04-04 14:59:59 nonsense +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [junk]     out < ├── [2026-10-03 15:30:00 nonsense +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [junk]     out < ├── [2026-10-03 15:29:59 nonsense +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [junk]     out < ├── [1883-11-18 16:59:59 nonsense +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [junk]     out < ├── [2026-03-29 01:00:00 nonsense +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [junk]     out < ├── [2026-03-29 00:59:59 nonsense +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [junk]     out < ├── [2026-11-01 06:00:00 nonsense +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [junk]     out < ├── [2026-11-01 05:59:59 nonsense +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [junk]   DIFF [timefmt-flags/C/main]: tree rc 2, aspen rc 2
+  [junk]     out 1,40c1,40
+  [junk]     out < [31 12 00031 DEC nonsense 0000002001 01 31 %q %]  main
+  [junk]     out < |-- [3  2 00003 FEB nonsense 0000002001 01 03 %q %]  alpha
+  [junk]     out < |   |-- [3  2 00003 FEB nonsense 0000002001 01 03 %q %]  a1.txt
+  [junk]     out < |   |-- [3  2 00003 FEB nonsense 0000002001 01 03 %q %]  a2.log
+  [junk]     out < |   `-- [3  2 00003 FEB nonsense 0000002001 01 03 %q %]  beta
+  [junk]     out < |       |-- [3  2 00003 FEB nonsense 0000002001 01 03 %q %]  b.txt
+tzoracle: [junk] TZ=nonsense: 48 agree / 8 differ
+  [missing]   DIFF [timefmt-many/C/main]: tree rc 2, aspen rc 2
+  [missing]     out 1,40c1,40
+  [missing]     out < [2001-12-31 12:00:00 Nowhere +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [missing]     out < |-- [2001-02-03 04:07:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [missing]     out < |   |-- [2001-02-03 04:08:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [missing]     out < |   |-- [2001-02-03 04:07:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [missing]     out < |   `-- [2001-02-03 04:06:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [missing]     out < |       |-- [2001-02-03 04:06:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [missing]     out < |       `-- [2001-02-03 04:05:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [missing]     out < |           `-- [2001-02-03 04:05:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [missing]     out < |-- [2001-02-03 04:16:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\\slash
+  [missing]     out < |-- [2001-05-06 07:09:00 Nowhere +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [missing]     out < |-- [2001-02-03 04:15:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [missing]   DIFF [timefmt-many/C/times]: tree rc 0, aspen rc 0
+  [missing]     out 1,22c1,22
+  [missing]     out < [2026-07-02 13:47:00 Nowhere +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [missing]     out < |-- [2026-07-02 13:47:00 Nowhere +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [missing]     out < |-- [2026-04-04 15:00:00 Nowhere +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [missing]     out < |-- [2026-04-04 14:59:59 Nowhere +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [missing]     out < |-- [2026-10-03 15:30:00 Nowhere +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [missing]     out < |-- [2026-10-03 15:29:59 Nowhere +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [missing]     out < |-- [1883-11-18 16:59:59 Nowhere +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [missing]     out < |-- [2026-03-29 01:00:00 Nowhere +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [missing]     out < |-- [2026-03-29 00:59:59 Nowhere +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [missing]     out < |-- [2026-11-01 06:00:00 Nowhere +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [missing]     out < |-- [2026-11-01 05:59:59 Nowhere +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [missing]   DIFF [timefmt-many/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [missing]     out 1,40c1,40
+  [missing]     out < [2001-12-31 12:00:00 Nowhere +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [missing]     out < ├── [2001-02-03 04:07:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [missing]     out < │   ├── [2001-02-03 04:08:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [missing]     out < │   ├── [2001-02-03 04:07:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [missing]     out < │   └── [2001-02-03 04:06:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [missing]     out < │       ├── [2001-02-03 04:06:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [missing]     out < │       └── [2001-02-03 04:05:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [missing]     out < │           └── [2001-02-03 04:05:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [missing]     out < ├── [2001-02-03 04:16:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\slash
+  [missing]     out < ├── [2001-05-06 07:09:00 Nowhere +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [missing]     out < ├── [2001-02-03 04:15:00 Nowhere +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [missing]   DIFF [timefmt-many/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [missing]     out 1,22c1,22
+  [missing]     out < [2026-07-02 13:47:00 Nowhere +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [missing]     out < ├── [2026-07-02 13:47:00 Nowhere +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [missing]     out < ├── [2026-04-04 15:00:00 Nowhere +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [missing]     out < ├── [2026-04-04 14:59:59 Nowhere +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [missing]     out < ├── [2026-10-03 15:30:00 Nowhere +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [missing]     out < ├── [2026-10-03 15:29:59 Nowhere +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [missing]     out < ├── [1883-11-18 16:59:59 Nowhere +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [missing]     out < ├── [2026-03-29 01:00:00 Nowhere +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [missing]     out < ├── [2026-03-29 00:59:59 Nowhere +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [missing]     out < ├── [2026-11-01 06:00:00 Nowhere +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [missing]     out < ├── [2026-11-01 05:59:59 Nowhere +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [missing]   DIFF [timefmt-flags/C/main]: tree rc 2, aspen rc 2
+  [missing]     out 1,40c1,40
+  [missing]     out < [31 12 00031 DEC nowhere 0000002001 01 31 %q %]  main
+  [missing]     out < |-- [3  2 00003 FEB nowhere 0000002001 01 03 %q %]  alpha
+  [missing]     out < |   |-- [3  2 00003 FEB nowhere 0000002001 01 03 %q %]  a1.txt
+  [missing]     out < |   |-- [3  2 00003 FEB nowhere 0000002001 01 03 %q %]  a2.log
+  [missing]     out < |   `-- [3  2 00003 FEB nowhere 0000002001 01 03 %q %]  beta
+  [missing]     out < |       |-- [3  2 00003 FEB nowhere 0000002001 01 03 %q %]  b.txt
+tzoracle: [missing] TZ=Nowhere/City: 48 agree / 8 differ
+  [colon-rel]   DIFF [timefmt-many/C/main]: tree rc 2, aspen rc 2
+  [colon-rel]     out 1,40c1,40
+  [colon-rel]     out < [2001-12-31 12:00:00 times +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [colon-rel]     out < |-- [2001-02-03 04:07:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [colon-rel]     out < |   |-- [2001-02-03 04:08:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [colon-rel]     out < |   |-- [2001-02-03 04:07:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [colon-rel]     out < |   `-- [2001-02-03 04:06:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [colon-rel]     out < |       |-- [2001-02-03 04:06:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [colon-rel]     out < |       `-- [2001-02-03 04:05:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [colon-rel]     out < |           `-- [2001-02-03 04:05:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [colon-rel]     out < |-- [2001-02-03 04:16:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\\slash
+  [colon-rel]     out < |-- [2001-05-06 07:09:00 times +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [colon-rel]     out < |-- [2001-02-03 04:15:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [colon-rel]   DIFF [timefmt-many/C/times]: tree rc 0, aspen rc 0
+  [colon-rel]     out 1,22c1,22
+  [colon-rel]     out < [2026-07-02 13:47:00 times +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [colon-rel]     out < |-- [2026-07-02 13:47:00 times +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [colon-rel]     out < |-- [2026-04-04 15:00:00 times +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [colon-rel]     out < |-- [2026-04-04 14:59:59 times +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [colon-rel]     out < |-- [2026-10-03 15:30:00 times +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [colon-rel]     out < |-- [2026-10-03 15:29:59 times +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [colon-rel]     out < |-- [1883-11-18 16:59:59 times +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [colon-rel]     out < |-- [2026-03-29 01:00:00 times +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [colon-rel]     out < |-- [2026-03-29 00:59:59 times +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [colon-rel]     out < |-- [2026-11-01 06:00:00 times +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [colon-rel]     out < |-- [2026-11-01 05:59:59 times +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [colon-rel]   DIFF [timefmt-many/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [colon-rel]     out 1,40c1,40
+  [colon-rel]     out < [2001-12-31 12:00:00 times +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [colon-rel]     out < ├── [2001-02-03 04:07:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [colon-rel]     out < │   ├── [2001-02-03 04:08:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [colon-rel]     out < │   ├── [2001-02-03 04:07:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [colon-rel]     out < │   └── [2001-02-03 04:06:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [colon-rel]     out < │       ├── [2001-02-03 04:06:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [colon-rel]     out < │       └── [2001-02-03 04:05:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [colon-rel]     out < │           └── [2001-02-03 04:05:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [colon-rel]     out < ├── [2001-02-03 04:16:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\slash
+  [colon-rel]     out < ├── [2001-05-06 07:09:00 times +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [colon-rel]     out < ├── [2001-02-03 04:15:00 times +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [colon-rel]   DIFF [timefmt-many/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [colon-rel]     out 1,22c1,22
+  [colon-rel]     out < [2026-07-02 13:47:00 times +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [colon-rel]     out < ├── [2026-07-02 13:47:00 times +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [colon-rel]     out < ├── [2026-04-04 15:00:00 times +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [colon-rel]     out < ├── [2026-04-04 14:59:59 times +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [colon-rel]     out < ├── [2026-10-03 15:30:00 times +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [colon-rel]     out < ├── [2026-10-03 15:29:59 times +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [colon-rel]     out < ├── [1883-11-18 16:59:59 times +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [colon-rel]     out < ├── [2026-03-29 01:00:00 times +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [colon-rel]     out < ├── [2026-03-29 00:59:59 times +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [colon-rel]     out < ├── [2026-11-01 06:00:00 times +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [colon-rel]     out < ├── [2026-11-01 05:59:59 times +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [colon-rel]   DIFF [timefmt-flags/C/main]: tree rc 2, aspen rc 2
+  [colon-rel]     out 1,40c1,40
+  [colon-rel]     out < [31 12 00031 DEC times 0000002001 01 31 %q %]  main
+  [colon-rel]     out < |-- [3  2 00003 FEB times 0000002001 01 03 %q %]  alpha
+  [colon-rel]     out < |   |-- [3  2 00003 FEB times 0000002001 01 03 %q %]  a1.txt
+  [colon-rel]     out < |   |-- [3  2 00003 FEB times 0000002001 01 03 %q %]  a2.log
+  [colon-rel]     out < |   `-- [3  2 00003 FEB times 0000002001 01 03 %q %]  beta
+  [colon-rel]     out < |       |-- [3  2 00003 FEB times 0000002001 01 03 %q %]  b.txt
+tzoracle: [colon-rel] TZ=:times/leap: 48 agree / 8 differ
+  [letters]   DIFF [timefmt-many/C/main]: tree rc 2, aspen rc 2
+  [letters]     out 1,40c1,40
+  [letters]     out < [2001-12-31 12:00:00 ABC +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [letters]     out < |-- [2001-02-03 04:07:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [letters]     out < |   |-- [2001-02-03 04:08:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [letters]     out < |   |-- [2001-02-03 04:07:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [letters]     out < |   `-- [2001-02-03 04:06:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [letters]     out < |       |-- [2001-02-03 04:06:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [letters]     out < |       `-- [2001-02-03 04:05:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [letters]     out < |           `-- [2001-02-03 04:05:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [letters]     out < |-- [2001-02-03 04:16:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\\slash
+  [letters]     out < |-- [2001-05-06 07:09:00 ABC +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [letters]     out < |-- [2001-02-03 04:15:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [letters]   DIFF [timefmt-many/C/times]: tree rc 0, aspen rc 0
+  [letters]     out 1,22c1,22
+  [letters]     out < [2026-07-02 13:47:00 ABC +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [letters]     out < |-- [2026-07-02 13:47:00 ABC +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [letters]     out < |-- [2026-04-04 15:00:00 ABC +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [letters]     out < |-- [2026-04-04 14:59:59 ABC +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [letters]     out < |-- [2026-10-03 15:30:00 ABC +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [letters]     out < |-- [2026-10-03 15:29:59 ABC +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [letters]     out < |-- [1883-11-18 16:59:59 ABC +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [letters]     out < |-- [2026-03-29 01:00:00 ABC +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [letters]     out < |-- [2026-03-29 00:59:59 ABC +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [letters]     out < |-- [2026-11-01 06:00:00 ABC +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [letters]     out < |-- [2026-11-01 05:59:59 ABC +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [letters]   DIFF [timefmt-many/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [letters]     out 1,40c1,40
+  [letters]     out < [2001-12-31 12:00:00 ABC +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [letters]     out < ├── [2001-02-03 04:07:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [letters]     out < │   ├── [2001-02-03 04:08:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [letters]     out < │   ├── [2001-02-03 04:07:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [letters]     out < │   └── [2001-02-03 04:06:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [letters]     out < │       ├── [2001-02-03 04:06:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [letters]     out < │       └── [2001-02-03 04:05:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [letters]     out < │           └── [2001-02-03 04:05:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [letters]     out < ├── [2001-02-03 04:16:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\slash
+  [letters]     out < ├── [2001-05-06 07:09:00 ABC +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [letters]     out < ├── [2001-02-03 04:15:00 ABC +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [letters]   DIFF [timefmt-many/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [letters]     out 1,22c1,22
+  [letters]     out < [2026-07-02 13:47:00 ABC +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [letters]     out < ├── [2026-07-02 13:47:00 ABC +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [letters]     out < ├── [2026-04-04 15:00:00 ABC +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [letters]     out < ├── [2026-04-04 14:59:59 ABC +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [letters]     out < ├── [2026-10-03 15:30:00 ABC +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [letters]     out < ├── [2026-10-03 15:29:59 ABC +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [letters]     out < ├── [1883-11-18 16:59:59 ABC +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [letters]     out < ├── [2026-03-29 01:00:00 ABC +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [letters]     out < ├── [2026-03-29 00:59:59 ABC +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [letters]     out < ├── [2026-11-01 06:00:00 ABC +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [letters]     out < ├── [2026-11-01 05:59:59 ABC +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [letters]   DIFF [timefmt-flags/C/main]: tree rc 2, aspen rc 2
+  [letters]     out 1,40c1,40
+  [letters]     out < [31 12 00031 DEC abc 0000002001 01 31 %q %]  main
+  [letters]     out < |-- [3  2 00003 FEB abc 0000002001 01 03 %q %]  alpha
+  [letters]     out < |   |-- [3  2 00003 FEB abc 0000002001 01 03 %q %]  a1.txt
+  [letters]     out < |   |-- [3  2 00003 FEB abc 0000002001 01 03 %q %]  a2.log
+  [letters]     out < |   `-- [3  2 00003 FEB abc 0000002001 01 03 %q %]  beta
+  [letters]     out < |       |-- [3  2 00003 FEB abc 0000002001 01 03 %q %]  b.txt
+tzoracle: [letters] TZ=ABC: 48 agree / 8 differ
+  [non-utf8]   DIFF [timefmt-many/C/main]: tree rc 2, aspen rc 2
+  [non-utf8]     out 1,40c1,40
+  [non-utf8]     out < [2001-12-31 12:00:00  +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [non-utf8]     out < |-- [2001-02-03 04:07:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [non-utf8]     out < |   |-- [2001-02-03 04:08:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [non-utf8]     out < |   |-- [2001-02-03 04:07:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [non-utf8]     out < |   `-- [2001-02-03 04:06:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [non-utf8]     out < |       |-- [2001-02-03 04:06:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [non-utf8]     out < |       `-- [2001-02-03 04:05:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [non-utf8]     out < |           `-- [2001-02-03 04:05:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [non-utf8]     out < |-- [2001-02-03 04:16:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\\slash
+  [non-utf8]     out < |-- [2001-05-06 07:09:00  +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [non-utf8]     out < |-- [2001-02-03 04:15:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [non-utf8]   DIFF [timefmt-many/C/times]: tree rc 0, aspen rc 0
+  [non-utf8]     out 1,22c1,22
+  [non-utf8]     out < [2026-07-02 13:47:00  +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [non-utf8]     out < |-- [2026-07-02 13:47:00  +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [non-utf8]     out < |-- [2026-04-04 15:00:00  +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [non-utf8]     out < |-- [2026-04-04 14:59:59  +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [non-utf8]     out < |-- [2026-10-03 15:30:00  +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [non-utf8]     out < |-- [2026-10-03 15:29:59  +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [non-utf8]     out < |-- [1883-11-18 16:59:59  +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [non-utf8]     out < |-- [2026-03-29 01:00:00  +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [non-utf8]     out < |-- [2026-03-29 00:59:59  +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [non-utf8]     out < |-- [2026-11-01 06:00:00  +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [non-utf8]     out < |-- [2026-11-01 05:59:59  +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [non-utf8]   DIFF [timefmt-many/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [non-utf8]     out 1,40c1,40
+  [non-utf8]     out < [2001-12-31 12:00:00  +0000 365 Mon Monday Dec December 31 12 12 PM 12 01 20]  main
+  [non-utf8]     out < ├── [2001-02-03 04:07:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  alpha
+  [non-utf8]     out < │   ├── [2001-02-03 04:08:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a1.txt
+  [non-utf8]     out < │   ├── [2001-02-03 04:07:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  a2.log
+  [non-utf8]     out < │   └── [2001-02-03 04:06:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  beta
+  [non-utf8]     out < │       ├── [2001-02-03 04:06:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  b.txt
+  [non-utf8]     out < │       └── [2001-02-03 04:05:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  gamma
+  [non-utf8]     out < │           └── [2001-02-03 04:05:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  deep.c
+  [non-utf8]     out < ├── [2001-02-03 04:16:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  back\slash
+  [non-utf8]     out < ├── [2001-05-06 07:09:00  +0000 126 Sun Sunday May May  6  7  7 AM 07 01 20]  big
+  [non-utf8]     out < ├── [2001-02-03 04:15:00  +0000 034 Sat Saturday Feb February  3  4  4 AM 04 01 20]  empty
+  [non-utf8]   DIFF [timefmt-many/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [non-utf8]     out 1,22c1,22
+  [non-utf8]     out < [2026-07-02 13:47:00  +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  times
+  [non-utf8]     out < ├── [2026-07-02 13:47:00  +0000 183 Thu Thursday Jul July  2 13  1 PM 01 26 20]  leap
+  [non-utf8]     out < ├── [2026-04-04 15:00:00  +0000 094 Sat Saturday Apr April  4 15  3 PM 03 26 20]  lhw-end
+  [non-utf8]     out < ├── [2026-04-04 14:59:59  +0000 094 Sat Saturday Apr April  4 14  2 PM 02 26 20]  lhw-end-1
+  [non-utf8]     out < ├── [2026-10-03 15:30:00  +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start
+  [non-utf8]     out < ├── [2026-10-03 15:29:59  +0000 276 Sat Saturday Oct October  3 15  3 PM 03 26 20]  lhw-start-1
+  [non-utf8]     out < ├── [1883-11-18 16:59:59  +0000 322 Sun Sunday Nov November 18 16  4 PM 04 83 18]  lmt
+  [non-utf8]     out < ├── [2026-03-29 01:00:00  +0000 088 Sun Sunday Mar March 29  1  1 AM 01 26 20]  lon-start
+  [non-utf8]     out < ├── [2026-03-29 00:59:59  +0000 088 Sun Sunday Mar March 29  0 12 AM 12 26 20]  lon-start-1
+  [non-utf8]     out < ├── [2026-11-01 06:00:00  +0000 305 Sun Sunday Nov November  1  6  6 AM 06 26 20]  ny-end
+  [non-utf8]     out < ├── [2026-11-01 05:59:59  +0000 305 Sun Sunday Nov November  1  5  5 AM 05 26 20]  ny-end-1
+  [non-utf8]   DIFF [timefmt-flags/C/main]: tree rc 2, aspen rc 2
+  [non-utf8]     out 1,40c1,40
+  [non-utf8]     out < [31 12 00031 DEC  0000002001 01 31 %q %]  main
+  [non-utf8]     out < |-- [3  2 00003 FEB  0000002001 01 03 %q %]  alpha
+  [non-utf8]     out < |   |-- [3  2 00003 FEB  0000002001 01 03 %q %]  a1.txt
+  [non-utf8]     out < |   |-- [3  2 00003 FEB  0000002001 01 03 %q %]  a2.log
+  [non-utf8]     out < |   `-- [3  2 00003 FEB  0000002001 01 03 %q %]  beta
+  [non-utf8]     out < |       |-- [3  2 00003 FEB  0000002001 01 03 %q %]  b.txt
+tzoracle: [non-utf8] TZ=(non-utf8): 48 agree / 8 differ
+  [tzdir]   DIFF [date/C/main]: tree rc 2, aspen rc 2
+  [tzdir]     out 12c12
+  [tzdir]     out < |-- [Nov  1 05:03]  file.txt
+  [tzdir]     out ---
+  [tzdir]     out > |-- [Oct 31 23:33]  file.txt
+  [tzdir]   DIFF [date/C/times]: tree rc 0, aspen rc 0
+  [tzdir]     out 1,2c1,2
+  [tzdir]     out < [Jul  2 19:17]  times
+  [tzdir]     out < |-- [Jul  2 19:17]  leap
+  [tzdir]     out ---
+  [tzdir]     out > [Jul  2 13:47]  times
+  [tzdir]     out > |-- [Jul  2 13:47]  leap
+  [tzdir]     out 5,6c5,6
+  [tzdir]     out < |-- [Oct  3 21:00]  lhw-start
+  [tzdir]     out < |-- [Oct  3 20:59]  lhw-start-1
+  [tzdir]     out ---
+  [tzdir]     out > |-- [Oct  3 15:30]  lhw-start
+  [tzdir]     out > |-- [Oct  3 15:29]  lhw-start-1
+  [tzdir]   DIFF [date/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [tzdir]     out 12c12
+  [tzdir]     out < ├── [Nov  1 05:03]  file.txt
+  [tzdir]     out ---
+  [tzdir]     out > ├── [Oct 31 23:33]  file.txt
+  [tzdir]   DIFF [date/C.UTF-8/times]: tree rc 0, aspen rc 0
+  [tzdir]     out 1,2c1,2
+  [tzdir]     out < [Jul  2 19:17]  times
+  [tzdir]     out < ├── [Jul  2 19:17]  leap
+  [tzdir]     out ---
+  [tzdir]     out > [Jul  2 13:47]  times
+  [tzdir]     out > ├── [Jul  2 13:47]  leap
+  [tzdir]     out 5,6c5,6
+  [tzdir]     out < ├── [Oct  3 21:00]  lhw-start
+  [tzdir]     out < ├── [Oct  3 20:59]  lhw-start-1
+  [tzdir]     out ---
+  [tzdir]     out > ├── [Oct  3 15:30]  lhw-start
+  [tzdir]     out > ├── [Oct  3 15:29]  lhw-start-1
+  [tzdir]   DIFF [meta/C/main]: tree rc 2, aspen rc 2
+  [tzdir]     out 12c12
+  [tzdir]     out < |-- [-rw-------           1 Nov  1 05:03]  file.txt
+  [tzdir]     out ---
+  [tzdir]     out > |-- [-rw-------           1 Oct 31 23:33]  file.txt
+  [tzdir]   DIFF [meta/C/times]: tree rc 0, aspen rc 0
+  [tzdir]     out 1,2c1,2
+  [tzdir]     out < [drwxr-xr-x         460 Jul  2 19:17]  times
+  [tzdir]     out < |-- [-rw-r--r--           1 Jul  2 19:17]  leap
+  [tzdir]     out ---
+  [tzdir]     out > [drwxr-xr-x         460 Jul  2 13:47]  times
+  [tzdir]     out > |-- [-rw-r--r--           1 Jul  2 13:47]  leap
+  [tzdir]     out 5,6c5,6
+  [tzdir]     out < |-- [-rw-r--r--           1 Oct  3 21:00]  lhw-start
+  [tzdir]     out < |-- [-rw-r--r--           1 Oct  3 20:59]  lhw-start-1
+  [tzdir]     out ---
+  [tzdir]     out > |-- [-rw-r--r--           1 Oct  3 15:30]  lhw-start
+  [tzdir]     out > |-- [-rw-r--r--           1 Oct  3 15:29]  lhw-start-1
+  [tzdir]   DIFF [meta/C.UTF-8/main]: tree rc 2, aspen rc 2
+  [tzdir]     out 12c12
+  [tzdir]     out < ├── [-rw-------           1 Nov  1 05:03]  file.txt
+  [tzdir]     out ---
+  [tzdir]     out > ├── [-rw-------           1 Oct 31 23:33]  file.txt
+  [tzdir]   DIFF [meta/C.UTF-8/times]: tree rc 0, aspen rc 0
+tzoracle: [tzdir] TZ=Kolkata: 2 agree / 54 differ
+  [right-ny] NOT REFUSED [date]: rc 0, 782 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [meta]: rc 0, 1288 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [json-meta]: rc 0, 2449 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [out-meta]: rc 0, 0 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [combo]: rc 0, 1289 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [html-meta]: rc 0, 4498 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [xml-meta]: rc 0, 2290 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [timefmt]: rc 0, 738 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [timefmt-many]: rc 0, 2217 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [timefmt-week]: rc 0, 3107 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [timefmt-flags]: rc 0, 1404 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [timefmt-long]: rc 0, 5710 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [timefmt-json]: rc 0, 1457 stdout bytes, stderr: 
+  [right-ny] NOT REFUSED [ctime-date]: rc 0, 782 stdout bytes, stderr: 
+tzoracle: [right-ny] TZ=right/America/New_York: refused on 0 of 14 time sets
+tzoracle: [right-ny] the oracle's times/leap (Unix 1783000020): ├── [2026-07-02 09:46:33 EDT -0400]  leap
+sed: -e expression #1, char 17: unknown option to 's'
+tzoracle: [right-ny/default] TZ=right/America/New_York: 16 agree / 0 differ
+  [right-abs] NOT REFUSED [date]: rc 0, 782 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [meta]: rc 0, 1288 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [json-meta]: rc 0, 2449 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [out-meta]: rc 0, 0 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [combo]: rc 0, 1289 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [html-meta]: rc 0, 4503 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [xml-meta]: rc 0, 2290 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [timefmt]: rc 0, 738 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [timefmt-many]: rc 0, 2213 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [timefmt-week]: rc 0, 3107 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [timefmt-flags]: rc 0, 1403 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [timefmt-long]: rc 0, 5710 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [timefmt-json]: rc 0, 1457 stdout bytes, stderr: 
+  [right-abs] NOT REFUSED [ctime-date]: rc 0, 782 stdout bytes, stderr: 
+tzoracle: [right-abs] TZ=/usr/share/zoneinfo/right/UTC: refused on 0 of 14 time sets
+tzoracle: [right-abs] the oracle's times/leap (Unix 1783000020): ├── [2026-07-02 13:46:33 UTC +0000]  leap
+sed: -e expression #1, char 18: unknown option to 's'
+tzoracle: [right-abs/default] TZ=/usr/share/zoneinfo/right/UTC: 16 agree / 0 differ
+  [right-tzdir] NOT REFUSED [date]: rc 0, 782 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [meta]: rc 0, 1288 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [json-meta]: rc 0, 2449 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [out-meta]: rc 0, 0 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [combo]: rc 0, 1289 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [html-meta]: rc 0, 4498 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [xml-meta]: rc 0, 2290 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [timefmt]: rc 0, 738 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [timefmt-many]: rc 0, 2217 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [timefmt-week]: rc 0, 3107 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [timefmt-flags]: rc 0, 1404 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [timefmt-long]: rc 0, 5710 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [timefmt-json]: rc 0, 1457 stdout bytes, stderr: 
+  [right-tzdir] NOT REFUSED [ctime-date]: rc 0, 782 stdout bytes, stderr: 
+tzoracle: [right-tzdir] TZ=America/New_York: refused on 0 of 14 time sets
+tzoracle: [right-tzdir] the oracle's times/leap (Unix 1783000020): ├── [2026-07-02 09:46:33 EDT -0400]  leap
+sed: -e expression #1, char 20: unknown option to 's'
+tzoracle: [right-tzdir/default] TZ=America/New_York: 16 agree / 0 differ
+tzoracle: 1410 agree / 136 differ / 0 skipped / 22 known (class ref, against tree)
+MEASURE tzoracle-trunk-vs-tree exit=1 (a measurement, not a gauntlet step)
+=== 23:33:22Z the std witness (aspen#13): std.time at the pin and at std trunk, a right/ zone
+std trunk at dee6206fa99025336ca7a01845ef80cf9f6dc09a
+MEASURE probes-build exit=0
+--- ./stdtime-pin TZ=America/New_York
+local_in: 2026-07-02 09:47:00 EDT -0400 dst=true off=-14400
+local($TZ): 2026-07-02 09:47:00 EDT -0400 dst=true off=-14400
+--- ./stdtime-trunk TZ=America/New_York
+local_in: 2026-07-02 09:47:00 EDT -0400 dst=true off=-14400
+local($TZ): 2026-07-02 09:47:00 EDT -0400 dst=true off=-14400
+--- ./stdtime-pin TZ=right/America/New_York
+local_in(right/America/New_York, 1783000020): zone
+local_in: 2026-07-02 13:47:00 UTC +0000 dst=false off=0
+local($TZ): 2026-07-02 13:47:00 UTC +0000 dst=false off=0
+--- ./stdtime-trunk TZ=right/America/New_York
+local_in: 2026-07-02 09:46:33 EDT -0400 dst=true off=-14400
+local($TZ): 2026-07-02 09:46:33 EDT -0400 dst=true off=-14400
+cost: 100000 calls, 701746 us, 7017 ns/call (acc 2950140)
+cost: 100000 calls, 688854 us, 6888 ns/call (acc 2950140)
+cost: 100000 calls, 14464 us, 144 ns/call (acc 2950140)
+MEASURE probes-run exit=0
+=== 23:33:28Z the -D cost rows (a measurement): tree100k, the files' times shared, then distinct
+cost same -D c-aspen/aspen: ms 59 59 59
+cost same --timefmt=%T c-aspen/aspen: ms 59 58 59
+cost same -D bin/before-linux-release: ms 106 106 106
+cost same --timefmt=%T bin/before-linux-release: ms 108 109 107
+cost same -D release/aspen: ms 127 127 127
+cost same --timefmt=%T release/aspen: ms 106 105 105
+cost distinct -D c-aspen/aspen: ms 53 53 52
+cost distinct --timefmt=%T c-aspen/aspen: ms 55 55 55
+cost distinct -D bin/before-linux-release: ms 97 97 95
+cost distinct --timefmt=%T bin/before-linux-release: ms 101 101 100
+cost distinct -D release/aspen: ms 434 436 435
+cost distinct --timefmt=%T release/aspen: ms 433 433 435
+=== 23:33:37Z done
