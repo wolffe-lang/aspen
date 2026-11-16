@@ -89,8 +89,8 @@ not change that while `/usr/lib/locale/C.utf8` is absent, and
 
 ## Build
 
-The toolchain is fetched by digest (`wolf-toolchain.toml`): wolf 0.2.36,
-lupin 0.1.58, wolf-std `78b9d3cb`.
+The toolchain is fetched by digest (`wolf-toolchain.toml`): wolf 0.2.40,
+lupin 0.1.62, wolf-std `be1d10fa`.
 
 ```sh
 tools/fetch-toolchain
