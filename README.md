@@ -26,7 +26,7 @@ dependency but wolf-std and is built static for
   where C aspen records a deviation from tree (`tests/golden/deviations.sh`
   there), the deviation is the law. The goldens are never edited.
 - **`tree` 2.3.2**, the distribution's package, run as a black box, the
-  backstop: the same version on kasumi (Arch Linux `tree 2.3.2-1`), in
+  backstop: the same version on an Arch Linux x86-64 host (`tree 2.3.2-1`), in
   CI's container, and from Homebrew on macOS. tree's source is never read
   directly.
 
